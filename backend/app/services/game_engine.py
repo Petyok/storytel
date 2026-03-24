@@ -69,32 +69,226 @@ def _model_failed_notice(lang: str) -> str:
 LLM_PARSE_WAVES = 3
 
 
-def _opening_seed_payload(lang: str, player_name: str, world_location: str) -> tuple[str, list[str]]:
-    """Grounded opening oriented toward finding rest / a tavern."""
+def _opening_setting(location: str, premise: str) -> str:
+    """Coarse place type from free text (location + premise) for bootstrap prose."""
+    blob = f"{location} {premise}".lower()
+    forest_kw = (
+        "forest",
+        "wood",
+        "grove",
+        "jungle",
+        "wildwood",
+        "лес",
+        "чащ",
+        "рощ",
+        "дубрав",
+        "elven",
+        "elf",
+        "эльф",
+        "fey",
+        "фейр",
+        "sylvan",
+        "бора",
+        "тайг",
+    )
+    water_kw = (
+        "sea",
+        "ocean",
+        "lake",
+        "river",
+        "coast",
+        "harbor",
+        "harbour",
+        "port",
+        "bay",
+        "dock",
+        "море",
+        "озер",
+        "рек",
+        "бухт",
+        "причал",
+        "берег",
+        "залив",
+    )
+    urban_kw = (
+        "city",
+        "town",
+        "gate",
+        "market",
+        "street",
+        "inn",
+        "tavern",
+        "district",
+        "citadel",
+        "borough",
+        "slum",
+        "город",
+        "площад",
+        "рынок",
+        "трактир",
+        "постоял",
+        "крепост",
+        "стен",
+        "ворот",
+        "ул.",
+        "улиц",
+        "квартал",
+    )
+    for k in forest_kw:
+        if k in blob:
+            return "forest"
+    for k in water_kw:
+        if k in blob:
+            return "water"
+    for k in urban_kw:
+        if k in blob:
+            return "urban"
+    return "wild"
+
+
+def _opening_seed_payload(
+    lang: str,
+    player_name: str,
+    world_location: str,
+    world_premise: str = "",
+) -> tuple[str, list[str]]:
+    """First scene + choices: tone matches location (forest / water / town / open country)."""
+    setting = _opening_setting(world_location, world_premise)
+
+    if setting == "forest":
+        if lang == "ru":
+            scene = (
+                f"{player_name} переступает кромку «{world_location}». Смола и мокрый мох; свет здесь редкий — "
+                "но впереди, между стволами, тянет теплом, будто чей-то костёр или факел. "
+                "Сзади сухие ветки отвечают на шаг слишком ровно, чтобы это был только ветер."
+            )
+            choices = [
+                "Подойти к тусклому свету между деревьями",
+                "Замереть и вслушаться в лес",
+                "Свернуть с тропы и стереть след",
+            ]
+        else:
+            scene = (
+                f"{player_name} crosses into the edge of {world_location}. Tar-sap and wet bark; light is scarce—"
+                "yet ahead, between the trunks, something breathes warmth like embers or a shaded lantern. "
+                "Behind you, twigs answer your stride with a patience that doesn't feel like wind alone."
+            )
+            choices = [
+                "Move toward the faint glow between the trees",
+                "Hold still and listen to the wood",
+                "Leave the path and break the line of sight",
+            ]
+        return scene, choices
+
+    if setting == "water":
+        if lang == "ru":
+            scene = (
+                f"{player_name} выходит к «{world_location}». Воздух солёный и холодный; на набережной редко горят окна, "
+                "но где-то ближе к причалу слышен смех и звон посуды — и чьи-то шаги держатся на одном и том же расстоянии позади."
+            )
+            choices = [
+                "Найти трактир у причала",
+                "Осмотреть причал и суда",
+                "Скрыться за складами и бочками",
+            ]
+        else:
+            scene = (
+                f"{player_name} comes down to {world_location}. The air is salt-cold; few windows burn along the waterfront, "
+                "but nearer the docks there's clatter and laughter—and footsteps behind you hold the same distance no matter how you slow."
+            )
+            choices = [
+                "Head for a dockside inn",
+                "Scan the piers and boats",
+                "Slip between sheds and stacked casks",
+            ]
+        return scene, choices
+
+    if setting == "urban":
+        if lang == "ru":
+            scene = (
+                f"{player_name} выходит к «{world_location}». День клонится к вечеру; фонари ещё не везде зажжены, "
+                "но из-за угла тянет жаром кухни, а дверь трактира приоткрыта. Шаги позади не догоняют — но и не отстают."
+            )
+            choices = [
+                "Зайти в трактир",
+                "Остановиться и осмотреться",
+                "Скользнуть в ближайший переулок",
+            ]
+        else:
+            scene = (
+                f"{player_name} arrives at {world_location}. Evening is gathering; lamps aren't all lit yet, "
+                "but heat and noise spill from a kitchen doorway, and a tavern stands ajar. Whoever follows you neither hurries nor falls behind."
+            )
+            choices = [
+                "Step inside for food and a corner",
+                "Pause and read the street",
+                "Slip down the nearest alley",
+            ]
+        return scene, choices
+
+    # wild: roads, hills, desert, steppe, anything not matched above
     if lang == "ru":
         scene = (
-            f"{player_name} сворачивает к «{world_location}». Улица редкая; из-за угла тянет дымом и жаром — "
-            "где-то готовят еду. Дверь трактира приоткрыта, но шаги позади не совпадают с вашим темпом."
+            f"{player_name} держит путь к «{world_location}». Небо широкое, дорога пустая; впереди единственный намёк на кров — "
+            "дымок, остов постройки или чей-то очаг. Позади слышно, как гравий сдвигается под чужой поступью."
         )
-        choices = ["Зайти в трактир", "Остановиться и осмотреться", "Скрыться в переулке"]
+        choices = [
+            "Идти к дымку или огоньку вдали",
+            "Осмотреться и приметить укрытие",
+            "Сойти с дороги и залечь",
+        ]
     else:
         scene = (
-            f"{player_name} reaches '{world_location}'. The street is sparse; smoke and heat drift from a side yard—someone is cooking. "
-            "A tavern door stands ajar, but the footsteps behind you don't match your pace."
+            f"{player_name} keeps toward {world_location}. The sky is wide and the road thin; ahead, the only promise of shelter—"
+            "a thread of smoke, a ruin's outline, someone's small fire. Behind you, gravel shifts under a second set of boots."
         )
-        choices = ["Enter the tavern", "Pause and scan the street", "Slip into a side alley"]
+        choices = [
+            "Walk toward the distant smoke or glow",
+            "Stop and pick a defensible spot",
+            "Leave the road and go to ground",
+        ]
     return scene, choices
 
 
-def _rest_quest_seed(lang: str) -> tuple[str, str]:
+def _rest_quest_seed(lang: str, setting: str) -> tuple[str, str]:
+    if setting == "forest":
+        if lang == "ru":
+            return (
+                "Найти место отдыха",
+                "Переждать ночь: костёр путников, полый ствол, сухой шалаш — любое укрытие без лишних глаз.",
+            )
+        return (
+            "Find a place to rest",
+            "Wait out the night—a traveler's fire, a hollow tree, a lean-to—any dry cover away from prying eyes.",
+        )
+    if setting == "water":
+        if lang == "ru":
+            return (
+                "Найти место отдыха",
+                "Укрытие у воды: постоялый двор, каюта на судне или сухой склад — где не задают лишних вопросов.",
+            )
+        return (
+            "Find a place to rest",
+            "Shelter by the water—an inn, a ship's berth, a dry warehouse—somewhere questions stay few.",
+        )
+    if setting == "urban":
+        if lang == "ru":
+            return (
+                "Найти место отдыха",
+                "Где переждать ночь: трактир, постоялый двор или тихий двор без лишних вопросов.",
+            )
+        return (
+            "Find a place to rest",
+            "Learn where you can wait out the night—a tavern, an inn, or a quiet corner without too many questions.",
+        )
     if lang == "ru":
         return (
             "Найти место отдыха",
-            "Узнай, где можно переждать ночь: трактир, постоялый двор или укромный угол без лишних вопросов.",
+            "Ночлег в открытой местности: стоянка, руины, чей-то лагерь — где можно не спать под небом.",
         )
     return (
         "Find a place to rest",
-        "Learn where you can wait out the night—a tavern, an inn, or a quiet corner without too many questions.",
+        "Shelter in the open—waystation, ruin ring, or a stranger's camp—anywhere you're not sleeping under raw sky.",
     )
 
 
@@ -580,14 +774,28 @@ def bootstrap_if_empty(
     seed_backstory = (player_backstory or "").strip()
     seed_location = (world_location or "").strip() or "Ashen Gate"
     seed_premise = (world_premise or "").strip()
-    opening_scene, opening_choices = _opening_seed_payload(lang, seed_name, seed_location)
-    quest_title, quest_desc = _rest_quest_seed(lang)
+    seed_setting = _opening_setting(seed_location, seed_premise)
+    opening_scene, opening_choices = _opening_seed_payload(lang, seed_name, seed_location, seed_premise)
+    quest_title, quest_desc = _rest_quest_seed(lang, seed_setting)
     derived_skills = _skills_from_backstory(seed_backstory)
-    warden = (
-        {"name": "Привратник", "trust": 0, "hidden_intent": "ищет слабое место в словах"}
-        if lang == "ru"
-        else {"name": "Gate Warden", "trust": 0, "hidden_intent": "tests the desperate"}
-    )
+    if seed_setting == "forest":
+        warden = (
+            {"name": "Странник у костра", "trust": 0, "hidden_intent": "скрывает, откуда знает вашу дорогу"}
+            if lang == "ru"
+            else {"name": "Wayfarer by the fire", "trust": 0, "hidden_intent": "won't say how they knew your route"}
+        )
+    elif seed_setting == "water":
+        warden = (
+            {"name": "Старший причала", "trust": 0, "hidden_intent": "считает швартовые и чужие лица"}
+            if lang == "ru"
+            else {"name": "Dock marshal", "trust": 0, "hidden_intent": "counts ropes and strangers alike"}
+        )
+    else:
+        warden = (
+            {"name": "Привратник", "trust": 0, "hidden_intent": "ищет слабое место в словах"}
+            if lang == "ru"
+            else {"name": "Gate Warden", "trust": 0, "hidden_intent": "tests the desperate"}
+        )
     starter_item = (
         {"name": "Ржавый кинжал", "quantity": 1, "description": "", "added_at": _utc_now()}
         if lang == "ru"
@@ -633,13 +841,31 @@ def bootstrap_if_empty(
             "secrets": [
                 seed_premise
                 or (
-                    "царапина в виде сигила под порогом"
-                    if lang == "ru"
-                    else "a sigil scratched under the lintel"
+                    (
+                        "на коре старого дуба — свежая засохшая кровь в форме руны"
+                        if lang == "ru"
+                        else "fresh blood dried in a rune-shape on an old oak's bark"
+                    )
+                    if seed_setting == "forest"
+                    else (
+                        "под причалом слышен металлический стук, когда прилив поднимается"
+                        if lang == "ru"
+                        else "a metallic knock under the pier when the tide lifts"
+                    )
+                    if seed_setting == "water"
+                    else (
+                        "царапина в виде сигила под порогом"
+                        if lang == "ru"
+                        else "a sigil scratched under the lintel"
+                    )
                 )
             ],
             "npcs": [warden],
-            "ascii_map": DEFAULT_BOOTSTRAP_ASCII_MAP_RU if lang == "ru" else DEFAULT_BOOTSTRAP_ASCII_MAP,
+            "ascii_map": (
+                DEFAULT_BOOTSTRAP_ASCII_MAP_RU
+                if lang == "ru"
+                else DEFAULT_BOOTSTRAP_ASCII_MAP
+            ),
             "turn": 0,
         }
         changed = True
