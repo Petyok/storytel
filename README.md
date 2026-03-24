@@ -60,8 +60,11 @@ Environment (optional):
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `SESSIONS_DIR` | `<repo>/sessions` | Session root |
-| `LLAMA_CPP_URL` | `http://127.0.0.1:8080` | llama.cpp base URL |
-| `LLAMA_COMPLETION_PATH` | `/completion` | Completion route |
+| `LLAMA_CPP_URL` | `http://127.0.0.1:8080` | llama.cpp base URL (no trailing slash) |
+| `LLAMA_COMPLETION_PATH` | `/v1/completions` | Route under base URL |
+| `LLM_API_STYLE` | `openai_completions` | `openai_completions` (OpenAI-style body, `choices[].text`) or `native` (`/completion`, `n_predict`, `content`) |
+| `LLM_OPENAI_MODEL` | `gpt-3.5-turbo-instruct` | `model` field for `/v1/completions` (local server usually ignores the value) |
+| `LLM_API_KEY` | *(empty)* | If set, sends `Authorization: Bearer …` |
 | `LLM_TIMEOUT_SEC` | `120` | HTTP timeout |
 | `MAX_PROMPT_CHARS` | `12000` | Hard cap on assembled prompt |
 | `CORS_ORIGINS` | `http://127.0.0.1:5173,...` | Browser origins |
@@ -91,7 +94,18 @@ If your server runs elsewhere:
 export LLAMA_CPP_URL=http://127.0.0.1:YOUR_PORT
 ```
 
-The client posts JSON to `{LLAMA_CPP_URL}{LLAMA_COMPLETION_PATH}` with `prompt`, `n_predict`, `temperature`, etc., and reads `content` from the response.
+By default the backend uses **OpenAI-compatible** `POST /v1/completions` (see [llama.cpp server docs](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)): body includes `prompt`, `max_tokens`, `temperature`, `top_p`, `repeat_penalty`, and `model`. The completion text is read from `choices[0].text`. For older servers that only expose the non-OAI route, set `LLM_API_STYLE=native` and `LLAMA_COMPLETION_PATH=/completion`.
+
+### Optional: start llama-server with `./run.sh`
+
+If `llama-server` is on your `PATH` and you set a model path, `run.sh` can spawn it before the API:
+
+```bash
+export START_LLAMA=1
+export LLAMA_MODEL=/path/to/model.gguf
+# optional: LLAMA_PORT=8080 LLAMA_SERVER_BIN=llama-server LLAMA_SERVER_EXTRA="--ctx-size 4096"
+./run.sh
+```
 
 ## Frontend
 

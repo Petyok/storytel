@@ -14,6 +14,7 @@ for arg in "$@"; do
       echo "  Starts uvicorn on API_PORT (default 8000) and Vite on FRONTEND_PORT (default 5173)."
       echo "  --system  use python3 instead of .venv/bin/python"
       echo "  Env: API_PORT, FRONTEND_PORT"
+      echo "  Optional llama-server: START_LLAMA=1 LLAMA_MODEL=/path/to/model.gguf [LLAMA_PORT=8080] [LLAMA_SERVER_BIN=llama-server] [LLAMA_SERVER_EXTRA='--ctx-size 4096']"
       exit 0
       ;;
   esac
@@ -38,13 +39,35 @@ else
 fi
 
 BACK_PID=""
+LLAMA_PID=""
 cleanup() {
   if [[ -n "${BACK_PID}" ]] && kill -0 "${BACK_PID}" 2>/dev/null; then
     kill -TERM "${BACK_PID}" 2>/dev/null || true
     wait "${BACK_PID}" 2>/dev/null || true
   fi
+  if [[ -n "${LLAMA_PID}" ]] && kill -0 "${LLAMA_PID}" 2>/dev/null; then
+    kill -TERM "${LLAMA_PID}" 2>/dev/null || true
+    wait "${LLAMA_PID}" 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT INT TERM
+
+LLAMA_PORT="${LLAMA_PORT:-8080}"
+if [[ "${START_LLAMA:-0}" == "1" ]]; then
+  if [[ -z "${LLAMA_MODEL:-}" ]]; then
+    echo "error: START_LLAMA=1 requires LLAMA_MODEL=/path/to/model.gguf" >&2
+    exit 1
+  fi
+  LLAMA_SERVER_BIN="${LLAMA_SERVER_BIN:-llama-server}"
+  need "$LLAMA_SERVER_BIN"
+  # shellcheck disable=SC2086
+  echo "==> LLM  http://127.0.0.1:${LLAMA_PORT}  ($LLAMA_SERVER_BIN, background)"
+  (
+    exec "$LLAMA_SERVER_BIN" -m "$LLAMA_MODEL" --host 127.0.0.1 --port "$LLAMA_PORT" $LLAMA_SERVER_EXTRA
+  ) &
+  LLAMA_PID=$!
+  sleep 0.8
+fi
 
 echo "==> API  http://127.0.0.1:${API_PORT}  (uvicorn)"
 (

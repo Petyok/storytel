@@ -1,4 +1,4 @@
-"""llama.cpp HTTP completion client (server default: /completion)."""
+"""LLM HTTP client: native llama.cpp /completion or OpenAI-compatible /v1/completions."""
 
 from __future__ import annotations
 
@@ -36,6 +36,33 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
     return None
 
 
+def _text_from_llm_response(data: dict[str, Any], api_style: str) -> str:
+    """Parse body from native /completion or OpenAI /v1/completions."""
+    style = (api_style or "openai_completions").strip().lower()
+    if style == "native":
+        content = data.get("content", "")
+        if content:
+            return str(content).strip()
+        ch0 = (data.get("choices") or [{}])[0]
+        return (ch0.get("text") or ch0.get("message", {}).get("content") or "").strip()
+
+    # openai_completions (and fallback)
+    choices = data.get("choices")
+    if isinstance(choices, list) and choices:
+        c0 = choices[0]
+        if isinstance(c0, dict):
+            t = c0.get("text")
+            if t is not None and str(t).strip():
+                return str(t).strip()
+            msg = c0.get("message")
+            if isinstance(msg, dict) and msg.get("content"):
+                return str(msg["content"]).strip()
+    content = data.get("content", "")
+    if content:
+        return str(content).strip()
+    return ""
+
+
 class LlamaCppClient:
     def __init__(
         self,
@@ -46,27 +73,44 @@ class LlamaCppClient:
         self.base_url = (base_url or settings.llama_cpp_url).rstrip("/")
         self.completion_path = completion_path or settings.llama_completion_path
         self.timeout = timeout if timeout is not None else settings.llm_timeout_sec
+        self._api_style = (settings.llm_api_style or "openai_completions").strip().lower()
 
-    def complete(self, prompt: str, max_tokens: int | None = None) -> str:
-        url = f"{self.base_url}{self.completion_path}"
-        payload: dict[str, Any] = {
+    def _build_payload(self, prompt: str, max_tokens: int) -> dict[str, Any]:
+        if self._api_style == "native":
+            return {
+                "prompt": prompt,
+                "n_predict": max_tokens,
+                "temperature": settings.llm_temperature,
+                "top_p": settings.llm_top_p,
+                "repeat_penalty": settings.llm_repeat_penalty,
+            }
+        return {
+            "model": settings.llm_openai_model,
             "prompt": prompt,
-            "n_predict": max_tokens or settings.llm_max_tokens,
+            "max_tokens": max_tokens,
             "temperature": settings.llm_temperature,
             "top_p": settings.llm_top_p,
             "repeat_penalty": settings.llm_repeat_penalty,
         }
+
+    def _request_headers(self) -> dict[str, str]:
+        key = (settings.llm_api_key or "").strip()
+        if key:
+            return {"Authorization": f"Bearer {key}"}
+        return {}
+
+    def complete(self, prompt: str, max_tokens: int | None = None) -> str:
+        url = f"{self.base_url}{self.completion_path}"
+        mt = max_tokens or settings.llm_max_tokens
+        payload = self._build_payload(prompt, mt)
+        headers = self._request_headers()
         with httpx.Client(timeout=self.timeout) as client:
-            r = client.post(url, json=payload)
+            r = client.post(url, json=payload, headers=headers)
             r.raise_for_status()
             data = r.json()
-        # llama.cpp server returns { "content": "..." } for /completion
-        content = data.get("content", "")
-        if not content and "choices" in data:
-            # OpenAI-compatible fallback
-            ch0 = (data.get("choices") or [{}])[0]
-            content = (ch0.get("text") or ch0.get("message", {}).get("content") or "").strip()
-        return str(content).strip()
+        if not isinstance(data, dict):
+            return ""
+        return _text_from_llm_response(data, self._api_style)
 
     def complete_with_retries(
         self,
@@ -89,7 +133,8 @@ class LlamaCppClient:
             except httpx.HTTPStatusError as e:
                 code = e.response.status_code if e.response is not None else 0
                 last_err = f"http_{code}"
-                if code >= 500 and attempt < max_tries - 1:
+                # Retry transient server / overload responses
+                if code in (429, 500, 502, 503, 504) and attempt < max_tries - 1:
                     time.sleep(backoff * (2**attempt))
                     continue
                 return "", attempts, last_err

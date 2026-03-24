@@ -9,7 +9,13 @@ class Settings(BaseSettings):
     # backend/app/core/config.py -> repo root is parents[2].parent
     sessions_dir: Path = Path(__file__).resolve().parents[2].parent / "sessions"
     llama_cpp_url: str = "http://127.0.0.1:8080"
-    llama_completion_path: str = "/completion"
+    # Native: POST /completion (n_predict, content). OpenAI-style: POST /v1/completions (recommended for current llama-server).
+    llama_completion_path: str = "/v1/completions"
+    llm_api_style: str = "openai_completions"  # or "native"
+    # Dummy model id for /v1/completions (llama-server ignores or uses for routing)
+    llm_openai_model: str = "gpt-3.5-turbo-instruct"
+    # Optional Bearer token (some proxies require it; local llama-server often does not)
+    llm_api_key: str = ""
     llm_timeout_sec: float = 120.0
     llm_max_tokens: int = 512
     llm_temperature: float = 0.75
