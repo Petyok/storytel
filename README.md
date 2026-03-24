@@ -69,6 +69,12 @@ Environment (optional):
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `SESSIONS_DIR` | `<repo>/sessions` | Session root |
+| `LLM_PROVIDER` | `local` | `local` = llama.cpp server; `openrouter` = [OpenRouter](https://openrouter.ai/) chat API |
+| `OPENROUTER_API_KEY` | *(empty)* | Required if `LLM_PROVIDER=openrouter` |
+| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | API base (usually unchanged) |
+| `OPENROUTER_MODEL` | *(empty)* | Required if OpenRouter — e.g. `qwen/qwen-2.5-7b-instruct`, `openai/gpt-4o-mini` ([models](https://openrouter.ai/models)) |
+| `OPENROUTER_HTTP_REFERER` | *(empty)* | Optional `HTTP-Referer` header (OpenRouter docs) |
+| `OPENROUTER_APP_TITLE` | `Storytel` | Optional `X-Title` header |
 | `LLAMA_CPP_URL` | `http://127.0.0.1:8080` | llama.cpp base URL (no trailing slash) |
 | `LLAMA_COMPLETION_PATH` | `/v1/completions` | Route under base URL |
 | `LLM_API_STYLE` | `openai_completions` | `openai_completions` (OpenAI-style body, `choices[].text`) or `native` (`/completion`, `n_predict`, `content`) |
@@ -86,7 +92,7 @@ Environment (optional):
 
 Endpoints:
 
-- `GET /health` — `{"status":"ok","llm_max_retries":4}` (used by the UI for loading copy)
+- `GET /health` — includes `llm_max_retries`, `llm_parse_waves`, `llm_provider`, and `openrouter_ready` when using OpenRouter
 - `GET /sessions` — list session folder names
 - `POST /sessions` — body `{"session_id":"my_save","overwrite":false}` → create (or reset with `overwrite: true`), returns same shape as `GET /session/{id}`; `409` if exists and not overwriting
 - `GET /session/{id}` — merged state + last scene + pending choices
@@ -108,6 +114,18 @@ export LLAMA_CPP_URL=http://127.0.0.1:YOUR_PORT
 ```
 
 By default the backend uses **OpenAI-compatible** `POST /v1/completions` (see [llama.cpp server docs](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)): body includes `prompt`, `max_tokens`, `temperature`, `top_p`, `repeat_penalty`, and `model`. The completion text is read from `choices[0].text`. For older servers that only expose the non-OAI route, set `LLM_API_STYLE=native` and `LLAMA_COMPLETION_PATH=/completion`.
+
+### OpenRouter
+
+To use [OpenRouter](https://openrouter.ai/) instead of a local `llama-server`:
+
+```bash
+export LLM_PROVIDER=openrouter
+export OPENROUTER_API_KEY="sk-or-v1-..."
+export OPENROUTER_MODEL="qwen/qwen-2.5-7b-instruct"
+```
+
+The backend calls `POST {OPENROUTER_BASE_URL}/chat/completions` with the full story prompt as one `user` message and reads `choices[0].message.content`. Retry, JSON parsing, and game rules are the same as for local inference. You do not need `llama-server` running when OpenRouter is enabled.
 
 ## Frontend
 

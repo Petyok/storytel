@@ -1,4 +1,4 @@
-"""LLM HTTP client: native llama.cpp /completion or OpenAI-compatible /v1/completions."""
+"""LLM HTTP client: local llama.cpp (/completion or /v1/completions) or OpenRouter (/chat/completions)."""
 
 from __future__ import annotations
 
@@ -92,7 +92,13 @@ def _text_from_llm_response(data: dict[str, Any], api_style: str) -> str:
     return ""
 
 
+def _provider() -> str:
+    return (settings.llm_provider or "local").strip().lower()
+
+
 class LlamaCppClient:
+    """Talks to local llama-server or, when LLM_PROVIDER=openrouter, to OpenRouter chat API."""
+
     def __init__(
         self,
         base_url: str | None = None,
@@ -143,6 +149,55 @@ class LlamaCppClient:
             return {"Authorization": f"Bearer {key}"}
         return {}
 
+    def _openrouter_chat_complete(
+        self,
+        prompt: str,
+        max_tokens: int,
+        *,
+        temperature: float | None = None,
+        stop: list[str] | None = None,
+    ) -> str:
+        key = (settings.openrouter_api_key or "").strip()
+        if not key:
+            raise ValueError("OPENROUTER_API_KEY is required when LLM_PROVIDER=openrouter")
+        model = (settings.openrouter_model or "").strip()
+        if not model:
+            raise ValueError("OPENROUTER_MODEL is required when LLM_PROVIDER=openrouter (see openrouter.ai/models)")
+
+        base = (settings.openrouter_base_url or "https://openrouter.ai/api/v1").rstrip("/")
+        url = f"{base}/chat/completions"
+        temp = float(settings.llm_temperature if temperature is None else temperature)
+        stops = stop if stop is not None else _stop_list_from_settings()
+
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": temp,
+            "top_p": float(settings.llm_top_p),
+        }
+        if stops:
+            payload["stop"] = stops
+
+        headers: dict[str, str] = {
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+        }
+        ref = (settings.openrouter_http_referer or "").strip()
+        if ref:
+            headers["HTTP-Referer"] = ref
+        title = (settings.openrouter_app_title or "").strip()
+        if title:
+            headers["X-Title"] = title
+
+        with httpx.Client(timeout=self.timeout) as client:
+            r = client.post(url, json=payload, headers=headers)
+            r.raise_for_status()
+            data = r.json()
+        if not isinstance(data, dict):
+            return ""
+        return _text_from_llm_response(data, "openai_completions")
+
     def complete(
         self,
         prompt: str,
@@ -151,8 +206,13 @@ class LlamaCppClient:
         temperature: float | None = None,
         stop: list[str] | None = None,
     ) -> str:
-        url = f"{self.base_url}{self.completion_path}"
         mt = max_tokens or settings.llm_max_tokens
+        if _provider() == "openrouter":
+            return self._openrouter_chat_complete(
+                prompt, mt, temperature=temperature, stop=stop
+            )
+
+        url = f"{self.base_url}{self.completion_path}"
         payload = self._build_payload(prompt, mt, temperature=temperature, stop=stop)
         headers = self._request_headers()
         with httpx.Client(timeout=self.timeout) as client:

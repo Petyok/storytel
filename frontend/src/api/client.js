@@ -7,9 +7,46 @@ async function parseError(res) {
   }
 }
 
-/** @returns {Promise<{ status: string, llm_max_retries?: number, llm_parse_waves?: number }>} */
+/** @returns {Promise<{ status: string, llm_max_retries?: number, llm_parse_waves?: number, llm_provider?: string, openrouter_ready?: boolean }>} */
 export async function fetchHealth() {
   const res = await fetch("/health");
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}
+
+/**
+ * @returns {Promise<{
+ *   llm_provider: string,
+ *   llama_cpp_url: string,
+ *   llama_completion_path: string,
+ *   llm_api_style: string,
+ *   llm_openai_model: string,
+ *   openrouter_base_url: string,
+ *   openrouter_model: string,
+ *   openrouter_ready: boolean,
+ *   has_openrouter_api_key: boolean,
+ *   has_llm_bearer: boolean,
+ *   llm_timeout_sec: number,
+ * }>}
+ */
+export async function fetchPublicSettings() {
+  const res = await fetch("/settings/public");
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}
+
+/**
+ * @returns {Promise<{
+ *   ok: boolean,
+ *   latency_ms: number,
+ *   llm_provider: string,
+ *   response_preview?: string,
+ *   error?: string,
+ *   detail?: string,
+ * }>}
+ */
+export async function postTestLlm() {
+  const res = await fetch("/settings/test-llm", { method: "POST" });
   if (!res.ok) throw new Error(await parseError(res));
   return res.json();
 }

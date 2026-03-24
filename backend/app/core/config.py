@@ -8,6 +8,10 @@ class Settings(BaseSettings):
 
     # backend/app/core/config.py -> repo root is parents[2].parent
     sessions_dir: Path = Path(__file__).resolve().parents[2].parent / "sessions"
+
+    # LLM_PROVIDER=local (llama.cpp server) | openrouter
+    llm_provider: str = "local"
+
     llama_cpp_url: str = "http://127.0.0.1:8080"
     # Native: POST /completion (n_predict, content). OpenAI-style: POST /v1/completions (recommended for current llama-server).
     llama_completion_path: str = "/v1/completions"
@@ -28,6 +32,15 @@ class Settings(BaseSettings):
     llm_stop_sequences: str = "<|im_end|>"
     max_prompt_chars: int = 12000  # ~3–4k tokens proxy for CPU models
     cors_origins: str = "http://127.0.0.1:5173,http://localhost:5173"
+
+    # OpenRouter (OpenAI-compatible chat): https://openrouter.ai/docs
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    # e.g. qwen/qwen-2.5-7b-instruct, anthropic/claude-3.5-sonnet, openai/gpt-4o-mini
+    openrouter_model: str = ""
+    # Optional headers OpenRouter recommends for rankings
+    openrouter_http_referer: str = ""
+    openrouter_app_title: str = "Storytel"
 
     # LLM resilience (llama-server may return 500 under load)
     llm_max_retries: int = 4

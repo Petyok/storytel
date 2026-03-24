@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { createSession, fetchSessions } from "../api/client.js";
+import ProviderSettingsModal from "./ProviderSettingsModal.jsx";
 import { useI18n } from "../i18n/I18nProvider.jsx";
 
 /**
@@ -21,6 +22,7 @@ export default function MainMenu({ selectedId, onSelectId, onStartSession }) {
   const [playerBackstory, setPlayerBackstory] = useState("");
   const [worldLocation, setWorldLocation] = useState("");
   const [worldPremise, setWorldPremise] = useState("");
+  const [providerSettingsOpen, setProviderSettingsOpen] = useState(false);
 
   const setupPayload = () => ({
     language: lang,
@@ -102,6 +104,14 @@ export default function MainMenu({ selectedId, onSelectId, onStartSession }) {
             <option value="en">{t("langEn")}</option>
             <option value="ru">{t("langRu")}</option>
           </select>
+          <button
+            type="button"
+            className="btn ghost main-menu-settings-btn"
+            disabled={busy}
+            onClick={() => setProviderSettingsOpen(true)}
+          >
+            {t("providerSettingsButton")}
+          </button>
         </div>
 
         <h2 className="main-menu-section">{t("yourSessions")}</h2>
@@ -190,6 +200,7 @@ export default function MainMenu({ selectedId, onSelectId, onStartSession }) {
           {busy ? t("starting") : t("play")}
         </button>
       </div>
+      <ProviderSettingsModal open={providerSettingsOpen} onClose={() => setProviderSettingsOpen(false)} />
     </div>
   );
 }
