@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Rusty dagger",
+    "quantity": 1,
+    "description": "Notched along the spine.",
+    "added_at": "2026-03-24T00:00:00+00:00"
+  },
+  {
+    "name": "Tallow candle",
+    "quantity": 1,
+    "description": "Burns with a thin, blue-white flame.",
+    "added_at": "2026-03-24T00:00:00+00:00"
+  },
+  {
+    "name": "Iron nail",
+    "quantity": 3,
+    "description": "Cold to the touch even in your palm.",
+    "added_at": "2026-03-24T00:00:00+00:00"
+  }
+]

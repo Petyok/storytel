@@ -1,0 +1,21 @@
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "Press close and listen for what the gate omits.",
+      "timestamp": "2026-03-24T00:30:00+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "The Warden's shadow leans as if attached to the bars by thread. Breath fogs; the fog does not drift—it clings, listening back.",
+      "timestamp": "2026-03-24T00:30:05+00:00"
+    }
+  ],
+  "pending_scene": "The Warden's fingers rest on the gate's teeth like a musician testing strings. Behind the iron, something scrapes in time with your pulse—not echo, reply. The Vendor shifts their tray; ash sifts through the cracks and spells a word you almost recognize before the wind erases it.",
+  "pending_choices": [
+    "Offer a lie the Warden can use",
+    "Ask the Vendor what the ash remembers",
+    "Drive an iron nail into the threshold",
+    "Step back and watch who blinks first"
+  ]
+}

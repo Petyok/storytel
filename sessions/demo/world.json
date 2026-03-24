@@ -1,0 +1,23 @@
+{
+  "location": "Ashen Gate",
+  "danger_level": 3,
+  "time": "witching_hour",
+  "secrets": [
+    "a sigil scratched under the lintel",
+    "cold iron pins driven into the threshold at odd intervals"
+  ],
+  "npcs": [
+    {
+      "name": "Gate Warden",
+      "trust": -1,
+      "hidden_intent": "will trade passage for a name you cannot take back"
+    },
+    {
+      "name": "Ash Vendor",
+      "trust": 1,
+      "hidden_intent": "sells dust that remembers footsteps"
+    }
+  ],
+  "ascii_map": "+---------+\n| # # # # |\n| # . @ . |\n| # > # # |\n+---------+\n  ^ you",
+  "turn": 2
+}
