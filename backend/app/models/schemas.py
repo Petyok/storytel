@@ -69,6 +69,19 @@ class SessionsListResponse(BaseModel):
     sessions: list[str]
 
 
+class SessionPlayerSetup(BaseModel):
+    name: str = Field(default="Wanderer", max_length=80)
+    backstory: str = Field(default="", max_length=2000)
+
+
+class SessionWorldSetup(BaseModel):
+    location: str = Field(default="Ashen Gate", max_length=120)
+    premise: str = Field(default="", max_length=2000)
+
+
 class CreateSessionRequest(BaseModel):
     session_id: str = Field(..., min_length=1, max_length=64)
     overwrite: bool = False
+    language: str = Field(default="en", max_length=16)
+    player: SessionPlayerSetup | None = None
+    world: SessionWorldSetup | None = None

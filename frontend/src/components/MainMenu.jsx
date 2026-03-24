@@ -17,6 +17,10 @@ export default function MainMenu({ selectedId, onSelectId, onEnterGame }) {
   const [overwrite, setOverwrite] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [playerName, setPlayerName] = useState("");
+  const [playerBackstory, setPlayerBackstory] = useState("");
+  const [worldLocation, setWorldLocation] = useState("");
+  const [worldPremise, setWorldPremise] = useState("");
 
   async function refreshList() {
     setListLoading(true);
@@ -41,7 +45,17 @@ export default function MainMenu({ selectedId, onSelectId, onEnterGame }) {
     setError("");
     setBusy(true);
     try {
-      await createSession(id, overwrite);
+      await createSession(id, overwrite, {
+        language: lang,
+        player: {
+          name: playerName.trim() || undefined,
+          backstory: playerBackstory.trim() || undefined,
+        },
+        world: {
+          location: worldLocation.trim() || undefined,
+          premise: worldPremise.trim() || undefined,
+        },
+      });
       setNewId("");
       setOverwrite(false);
       await refreshList();
@@ -66,7 +80,7 @@ export default function MainMenu({ selectedId, onSelectId, onEnterGame }) {
       setBusy(true);
       setError("");
       try {
-        await createSession(id, false);
+        await createSession(id, false, { language: lang });
         await refreshList();
       } catch (e) {
         setError(String(e?.message || e));
@@ -143,6 +157,38 @@ export default function MainMenu({ selectedId, onSelectId, onEnterGame }) {
             onKeyDown={(e) => {
               if (e.key === "Enter") handleCreate();
             }}
+          />
+          <label className="main-menu-fieldlabel">{t("playerName")}</label>
+          <input
+            className="main-menu-input"
+            placeholder={t("playerNamePlaceholder")}
+            value={playerName}
+            disabled={busy}
+            onChange={(e) => setPlayerName(e.target.value)}
+          />
+          <label className="main-menu-fieldlabel">{t("playerBackstory")}</label>
+          <textarea
+            className="main-menu-input main-menu-textarea"
+            placeholder={t("playerBackstoryPlaceholder")}
+            value={playerBackstory}
+            disabled={busy}
+            onChange={(e) => setPlayerBackstory(e.target.value)}
+          />
+          <label className="main-menu-fieldlabel">{t("worldLocation")}</label>
+          <input
+            className="main-menu-input"
+            placeholder={t("worldLocationPlaceholder")}
+            value={worldLocation}
+            disabled={busy}
+            onChange={(e) => setWorldLocation(e.target.value)}
+          />
+          <label className="main-menu-fieldlabel">{t("worldPremise")}</label>
+          <textarea
+            className="main-menu-input main-menu-textarea"
+            placeholder={t("worldPremisePlaceholder")}
+            value={worldPremise}
+            disabled={busy}
+            onChange={(e) => setWorldPremise(e.target.value)}
           />
           <label className="main-menu-check">
             <input

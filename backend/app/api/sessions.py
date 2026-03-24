@@ -47,7 +47,14 @@ def create_session(body: CreateSessionRequest) -> SessionGetResponse:
         wipe_session_json_files(sdir)
 
     sf = load_session(sid, settings.sessions_dir)
-    bootstrap_if_empty(sf)
+    bootstrap_if_empty(
+        sf,
+        language=body.language,
+        player_name=body.player.name if body.player else None,
+        player_backstory=body.player.backstory if body.player else None,
+        world_location=body.world.location if body.world else None,
+        world_premise=body.world.premise if body.world else None,
+    )
     sf.load()
     unified = merge_to_unified(sf)
     last = str(sf.history.get("pending_scene", ""))

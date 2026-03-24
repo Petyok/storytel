@@ -468,6 +468,18 @@ code {
   font-size: 0.9rem;
 }
 
+.main-menu-textarea {
+  min-height: 4.5rem;
+  resize: vertical;
+}
+
+.main-menu-fieldlabel {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .main-menu-check {
   display: flex;
   align-items: center;

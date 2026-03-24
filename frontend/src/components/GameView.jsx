@@ -15,7 +15,7 @@ import { useI18n } from "../i18n/I18nProvider.jsx";
  * }} props
  */
 export default function GameView({ sessionId, onSessionIdChange, onBackToMenu }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [sessions, setSessions] = useState([]);
   const [state, setState] = useState(null);
   const [scene, setScene] = useState("");
@@ -125,7 +125,7 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
                   setBusy(true);
                   setError("");
                   try {
-                    await createSession(v, false);
+                    await createSession(v, false, { language: lang });
                     onSessionIdChange(v);
                   } catch (err) {
                     setError(String(err?.message || err));

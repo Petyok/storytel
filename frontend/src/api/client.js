@@ -32,12 +32,20 @@ export async function postAction(sessionId, choice) {
 /**
  * @param {string} sessionId
  * @param {boolean} [overwrite]
+ * @param {{ language?: 'en'|'ru', player?: {name?: string, backstory?: string}, world?: {location?: string, premise?: string} }} [setup]
  */
-export async function createSession(sessionId, overwrite = false) {
+export async function createSession(sessionId, overwrite = false, setup = {}) {
+  const payload = {
+    session_id: sessionId,
+    overwrite,
+    language: setup.language || "en",
+    player: setup.player || undefined,
+    world: setup.world || undefined,
+  };
   const res = await fetch("/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id: sessionId, overwrite }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const detail = await parseError(res);

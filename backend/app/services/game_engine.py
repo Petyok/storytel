@@ -32,6 +32,81 @@ DEFAULT_BOOTSTRAP_ASCII_MAP = """    N
 +---+---+---+---+---+---+
   # wall   . floor   ~ water"""
 
+DEFAULT_BOOTSTRAP_ASCII_MAP_RU = """    С
++---+---+---+---+---+---+
+| # | # | # | ~ | ~ | # |
++---+---+---+---+---+---+
+| # | . | . | . | T | # |   T  пошлина / порог
++---+---+---+---+---+---+
+| # | . | @ | . | . | # |   @  вы
++---+---+---+---+---+---+
+| # | > | . | . | P | # |   >  спуск   P  патруль
++---+---+---+---+---+---+
+| # | # | # | # | # | # |
++---+---+---+---+---+---+
+  # стена   . пол   ~ вода"""
+
+
+def _normalize_lang(value: str | None) -> str:
+    v = str(value or "").strip().lower()
+    return "ru" if v.startswith("ru") else "en"
+
+
+def _lang_instruction(lang: str) -> str:
+    if lang == "ru":
+        return "Write scene and choices in Russian. Keep JSON keys in English."
+    return "Write scene and choices in English."
+
+
+def _fallback_payload(lang: str) -> dict[str, Any]:
+    if lang == "ru":
+        return {
+            "scene": "Коридор дрожит, из щелей тянет золой и шепотом. Впереди что-то сдвинулось — слишком осмысленно для ветра. Твой выбор уже отозвался, и тьма отвечает давлением в спину.",
+            "choices": [
+                "Идти вперед, держа оружие наготове",
+                "Замереть и прислушаться к шагам",
+                "Искать обходной путь",
+                "Окликнуть неизвестного и спровоцировать ответ",
+            ],
+            "effects_hint": "danger+1|time+1",
+        }
+    return {
+        "scene": "The corridor shifts; a draft carries ash and whispers. Something has moved ahead—too deliberate to be wind. Your choice still echoes, and the dark answers with pressure at your back.",
+        "choices": [
+            "Press forward, blade ready",
+            "Listen and mark what follows",
+            "Search for another path",
+            "Call out and force a reaction",
+        ],
+        "effects_hint": "danger+1|time+1",
+    }
+
+
+def _opening_seed_payload(lang: str, player_name: str, world_location: str) -> tuple[str, list[str], str]:
+    if lang == "ru":
+        scene = (
+            f"{player_name} останавливается у '{world_location}'. Холодный воздух идёт из камня, "
+            "будто за стеной дышит что-то живое. На пороге заметен свежий след золы, но второго шага нет."
+        )
+        choices = [
+            "Проверить след и осмотреть порог",
+            "Позвать стража и предложить сделку",
+            "Обойти ворота, ища тайный проход",
+        ]
+        quest_title = "Переступить порог"
+    else:
+        scene = (
+            f"{player_name} pauses at '{world_location}'. Cold air leaks through the stone as if something behind it is breathing. "
+            "A fresh ash print marks the threshold, but there is no second step."
+        )
+        choices = [
+            "Inspect the ash print and threshold",
+            "Call for the warden and offer a bargain",
+            "Circle the gate and search for a hidden way in",
+        ]
+        quest_title = "Cross the threshold"
+    return scene, choices, quest_title
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -90,8 +165,9 @@ def build_user_prompt(last_scene: str, choice: str, recent_lines: list[str]) -> 
     return "\n\n".join(parts)
 
 
-def build_full_prompt(state_json: str, user_block: str) -> str:
+def build_full_prompt(state_json: str, user_block: str, lang: str) -> str:
     system = SYSTEM_PROMPT_TEMPLATE.format(state_json=state_json)
+    system = f"{system}\nLanguage rule: {_lang_instruction(lang)}"
     full = system + "\n\n" + user_block
     if len(full) > settings.max_prompt_chars:
         full = full[: settings.max_prompt_chars] + "\n\n[truncated]"
@@ -287,6 +363,7 @@ def run_turn(
     """
     llm = llm or LlamaCppClient()
     unified = merge_to_unified(sf)
+    lang = _normalize_lang(unified.player.flags.get("language"))
 
     messages = sf.history.get("messages", [])
     if not isinstance(messages, list):
@@ -301,7 +378,7 @@ def run_turn(
     last_scene = str(sf.history.get("pending_scene", "") or "")
     user_block = build_user_prompt(last_scene, choice, recent)
     state_json = json.dumps(compact_state_for_prompt(unified), separators=(",", ":"), ensure_ascii=False)
-    prompt = build_full_prompt(state_json, user_block)
+    prompt = build_full_prompt(state_json, user_block, lang)
 
     llm_ok = True
     raw = ""
@@ -314,16 +391,7 @@ def run_turn(
     parsed, err = parse_llm_game_response(raw)
     if not parsed:
         llm_ok = False
-        parsed = {
-            "scene": "The corridor shifts; a draft carries ash and whispers. Something has moved ahead—too deliberate to be wind. Your choice still echoes, and the dark answers with pressure at your back.",
-            "choices": [
-                "Press forward, blade ready",
-                "Listen and mark what follows",
-                "Search for another path",
-                "Call out and force a reaction",
-            ],
-            "effects_hint": "danger+1|time+1",
-        }
+        parsed = _fallback_payload(lang)
 
     scene = str(parsed["scene"])
     choices = list(parsed["choices"])
@@ -362,29 +430,56 @@ def run_turn(
     return scene, choices, unified, eff, llm_ok
 
 
-def bootstrap_if_empty(sf: SessionFiles) -> None:
+def bootstrap_if_empty(
+    sf: SessionFiles,
+    language: str | None = None,
+    player_name: str | None = None,
+    player_backstory: str | None = None,
+    world_location: str | None = None,
+    world_premise: str | None = None,
+) -> None:
     """Ensure minimal files exist for new sessions."""
+    lang = _normalize_lang(language)
+    seed_name = (player_name or "").strip() or "Wanderer"
+    seed_backstory = (player_backstory or "").strip()
+    seed_location = (world_location or "").strip() or "Ashen Gate"
+    seed_premise = (world_premise or "").strip()
+    opening_scene, opening_choices, default_quest_title = _opening_seed_payload(lang, seed_name, seed_location)
     changed = False
     if not sf.main_character:
         sf.main_character = {
-            "name": "Wanderer",
+            "name": seed_name,
             "description": "Hollow-eyed and careful",
-            "backstory": "",
+            "backstory": seed_backstory,
             "hp": 100,
             "gold": 0,
             "status": "steady",
-            "flags": {},
+            "flags": {"language": lang},
             "created_at": _utc_now(),
         }
         changed = True
+    elif isinstance(sf.main_character, dict):
+        flags = sf.main_character.get("flags")
+        if not isinstance(flags, dict):
+            flags = {}
+        if not flags.get("language"):
+            flags["language"] = lang
+            sf.main_character["flags"] = flags
+            changed = True
+        if seed_backstory and not sf.main_character.get("backstory"):
+            sf.main_character["backstory"] = seed_backstory
+            changed = True
+        if seed_name and (not sf.main_character.get("name") or sf.main_character.get("name") == "Wanderer"):
+            sf.main_character["name"] = seed_name
+            changed = True
     if not sf.world or (isinstance(sf.world, dict) and not str(sf.world.get("location", "")).strip()):
         sf.world = {
-            "location": "Ashen Gate",
+            "location": seed_location,
             "danger_level": 2,
             "time": "night",
-            "secrets": ["a sigil scratched under the lintel"],
+            "secrets": [seed_premise or ("царапина в виде сигила под порогом" if lang == "ru" else "a sigil scratched under the lintel")],
             "npcs": [{"name": "Gate Warden", "trust": 0, "hidden_intent": "tests the desperate"}],
-            "ascii_map": DEFAULT_BOOTSTRAP_ASCII_MAP,
+            "ascii_map": DEFAULT_BOOTSTRAP_ASCII_MAP_RU if lang == "ru" else DEFAULT_BOOTSTRAP_ASCII_MAP,
             "turn": 0,
         }
         changed = True
@@ -395,8 +490,8 @@ def bootstrap_if_empty(sf: SessionFiles) -> None:
         sf.quests = [
             {
                 "id": 1,
-                "title": "Cross the threshold",
-                "description": "Find a way past the gate without losing yourself.",
+                "title": default_quest_title,
+                "description": "Найди путь за врата и не потеряй себя." if lang == "ru" else "Find a way past the gate without losing yourself.",
                 "status": "active",
                 "created_at": _utc_now(),
                 "notes": [],
@@ -410,26 +505,16 @@ def bootstrap_if_empty(sf: SessionFiles) -> None:
     if not hist.get("messages"):
         hist = {
             "messages": [],
-            "pending_scene": hist.get("pending_scene")
-            or "The gate exhales cold air. Footprints stop here—as if the stone refused them.",
-            "pending_choices": hist.get("pending_choices")
-            or [
-                "Offer a truthful reason",
-                "Stare through the bars in silence",
-                "Search for another way in",
-            ],
+            "pending_scene": hist.get("pending_scene") or opening_scene,
+            "pending_choices": hist.get("pending_choices") or opening_choices,
         }
         sf.history = hist
         changed = True
     elif not str(hist.get("pending_scene", "")).strip():
-        hist["pending_scene"] = "The gate exhales cold air. Footprints stop here—as if the stone refused them."
+        hist["pending_scene"] = opening_scene
         hist.setdefault(
             "pending_choices",
-            [
-                "Offer a truthful reason",
-                "Stare through the bars in silence",
-                "Search for another way in",
-            ],
+            opening_choices,
         )
         sf.history = hist
         changed = True
