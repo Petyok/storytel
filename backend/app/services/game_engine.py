@@ -410,18 +410,14 @@ def bootstrap_if_empty(sf: SessionFiles) -> None:
     if not hist.get("messages"):
         hist = {
             "messages": [],
-            "pending_scene": hist.get(
-                "pending_scene",
-                "The gate exhales cold air. Footprints stop here—as if the stone refused them.",
-            ),
-            "pending_choices": hist.get(
-                "pending_choices",
-                [
-                    "Offer a truthful reason",
-                    "Stare through the bars in silence",
-                    "Search for another way in",
-                ],
-            ),
+            "pending_scene": hist.get("pending_scene")
+            or "The gate exhales cold air. Footprints stop here—as if the stone refused them.",
+            "pending_choices": hist.get("pending_choices")
+            or [
+                "Offer a truthful reason",
+                "Stare through the bars in silence",
+                "Search for another way in",
+            ],
         }
         sf.history = hist
         changed = True

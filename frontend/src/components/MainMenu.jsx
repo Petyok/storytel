@@ -59,6 +59,25 @@ export default function MainMenu({ selectedId, onSelectId, onEnterGame }) {
     }
   }
 
+  async function handleEnterGame() {
+    const id = selectedId?.trim();
+    if (!id) return;
+    if (!sessions.includes(id)) {
+      setBusy(true);
+      setError("");
+      try {
+        await createSession(id, false);
+        await refreshList();
+      } catch (e) {
+        setError(String(e?.message || e));
+        setBusy(false);
+        return;
+      }
+      setBusy(false);
+    }
+    onEnterGame();
+  }
+
   return (
     <div className="main-menu">
       <div className="main-menu-card">
@@ -146,7 +165,7 @@ export default function MainMenu({ selectedId, onSelectId, onEnterGame }) {
           type="button"
           className="btn main-menu-play"
           disabled={busy || !selectedId?.trim()}
-          onClick={onEnterGame}
+          onClick={handleEnterGame}
         >
           {t("enterGame")}
         </button>

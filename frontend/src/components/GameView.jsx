@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchSession, fetchSessions, postAction } from "../api/client.js";
+import { createSession, fetchSession, fetchSessions, postAction } from "../api/client.js";
 import ChoiceList from "./ChoiceList.jsx";
 import HUD from "./HUD.jsx";
 import LoadingOverlay from "./LoadingOverlay.jsx";
@@ -104,7 +104,7 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
           >
             {!sessions.includes(sessionId) && (
               <option value={sessionId}>
-                {sessionId} (current)
+                {sessionId} ({t("sessionCurrent")})
               </option>
             )}
             {sessions.map((s) => (
@@ -117,10 +117,22 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
             className="session-input"
             placeholder={t("customIdPlaceholder")}
             disabled={busy}
-            onKeyDown={(e) => {
+            onKeyDown={async (e) => {
               if (e.key === "Enter") {
                 const v = e.currentTarget.value.trim();
-                if (v) onSessionIdChange(v);
+                if (v) {
+                  setBusyKind("session");
+                  setBusy(true);
+                  setError("");
+                  try {
+                    await createSession(v, false);
+                    onSessionIdChange(v);
+                  } catch (err) {
+                    setError(String(err?.message || err));
+                  } finally {
+                    setBusy(false);
+                  }
+                }
                 e.currentTarget.value = "";
               }
             }}
