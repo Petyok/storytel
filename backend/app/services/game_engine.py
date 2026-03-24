@@ -384,7 +384,14 @@ SYSTEM_PROMPT_BASE = """You are a dark fantasy game master.
 Use current game state:
 {state_json}
 
-Respond ONLY with a single JSON object (no markdown, no prose outside JSON):
+OUTPUT FORMAT (critical):
+- Your entire message must be ONE valid JSON object and nothing else.
+- First character must be {{ and last character must be }}.
+- Do not use markdown code fences (no ```).
+- Do not use XML tags, role headers, or "thinking" blocks—only the JSON object.
+- "choices" must be a JSON array of 2-4 short strings (not a single string).
+
+Schema:
 {{"scene":"...","choices":["...","..."],"effects_hint":"short hidden note for engine; optional tags: hp+/-N gold+/-N danger+/-N time+1 flag:name item+:Name item-:Name trust:NPCName+/-N quest+:title|desc quest~:id|completed|note"}}"""
 
 STORY_MODE_MAD_RULES = """
@@ -446,7 +453,7 @@ def build_user_prompt(last_scene: str, action_block: str, recent_lines: list[str
     if check_line:
         parts.append(check_line)
     parts.append(f"Player action:\n{action_block.strip()[:900]}")
-    parts.append("Narrate the next beat. Output JSON only.")
+    parts.append("Narrate the next beat. Reply with the JSON object only, starting with {{.")
     return "\n\n".join(parts)
 
 
@@ -693,7 +700,12 @@ def run_turn(
             if on_llm_attempt is not None:
                 on_llm_attempt(cur, mx, w)
 
-        chunk, att, _http_err = llm.complete_with_retries(prompt, on_attempt=_attempt_cb)
+        chunk, att, _http_err = llm.complete_with_retries(
+            prompt,
+            max_tokens=settings.llm_game_max_tokens,
+            on_attempt=_attempt_cb,
+            temperature=settings.llm_game_temperature,
+        )
         total_attempts += att
         raw = chunk
         parsed, _perr = parse_llm_game_response(raw)

@@ -7,7 +7,7 @@ async function parseError(res) {
   }
 }
 
-/** @returns {Promise<{ status: string, llm_max_retries?: number }>} */
+/** @returns {Promise<{ status: string, llm_max_retries?: number, llm_parse_waves?: number }>} */
 export async function fetchHealth() {
   const res = await fetch("/health");
   if (!res.ok) throw new Error(await parseError(res));

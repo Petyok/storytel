@@ -79,6 +79,9 @@ Environment (optional):
 | `CORS_ORIGINS` | `http://127.0.0.1:5173,...` | Browser origins |
 | `LLM_MAX_RETRIES` | `4` | Retries on LLM 5xx / timeout / bad JSON before fallback |
 | `LLM_RETRY_BACKOFF_SEC` | `0.6` | Base backoff between retries (seconds) |
+| `LLM_GAME_MAX_TOKENS` | `896` | Max completion tokens for story turns (raise if JSON is truncated) |
+| `LLM_GAME_TEMPERATURE` | `0.35` | Temperature for story turns (lower helps Qwen/instruct models stick to JSON) |
+| `LLM_STOP_SEQUENCES` | `<|im_end|>` | Comma-separated `stop` strings for `/v1/completions` |
 | `MADNESS_LIGHT_PER_MAD` | `50` | Story cadence: this many “light” turns, then one “mad” turn |
 
 Endpoints:

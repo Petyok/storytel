@@ -47,6 +47,7 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
     lastCheck: null,
   });
   const [llmMaxRetries, setLlmMaxRetries] = useState(/** @type {number | null} */ (null));
+  const [llmParseWaves, setLlmParseWaves] = useState(/** @type {number | null} */ (null));
   const [liveAttempt, setLiveAttempt] = useState(
     /** @type {{ current: number, max: number, wave: number, maxWaves: number } | null} */ (null)
   );
@@ -90,7 +91,9 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
       try {
         const h = await fetchHealth();
         const n = h.llm_max_retries;
+        const w = h.llm_parse_waves;
         if (!cancelled && typeof n === "number" && n > 0) setLlmMaxRetries(n);
+        if (!cancelled && typeof w === "number" && w > 0) setLlmParseWaves(w);
       } catch {
         if (!cancelled) setLlmMaxRetries(null);
       }
@@ -252,12 +255,16 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
         <div className="meta-bar mono small" title={t("metaBarTip")}>
           {lastMeta.llmOk ? <span className="ok">{t("llmOk")}</span> : <span className="warn">{t("llmError")}</span>}
           {lastMeta.attempts >= 1 && (
-            <span className="muted" title={t("llmAttempts")}>
+            <span className="muted" title={t("llmAttemptsTip")}>
               {" "}
-              · {t("llmAttempts")}: {lastMeta.attempts}
-              {llmMaxRetries != null && llmMaxRetries > 0 && (
-                <span className="muted"> / {llmMaxRetries}</span>
-              )}
+              ·{" "}
+              {llmMaxRetries != null && llmParseWaves != null
+                ? t("llmAttemptsDetail", {
+                    n: lastMeta.attempts,
+                    per: llmMaxRetries,
+                    waves: llmParseWaves,
+                  })
+                : `${t("llmAttempts")}: ${lastMeta.attempts}`}
             </span>
           )}
           {effectTags.length > 0 && (

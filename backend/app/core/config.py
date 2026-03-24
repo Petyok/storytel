@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     llm_temperature: float = 0.75
     llm_top_p: float = 0.9
     llm_repeat_penalty: float = 1.1
+    # Story turns: lower temp + more tokens helps chat-tuned models (Qwen, etc.) emit valid JSON
+    llm_game_max_tokens: int = 896
+    llm_game_temperature: float = 0.35
+    # Comma-separated stop strings for /v1/completions (e.g. </think> when the model adds it after JSON)
+    llm_stop_sequences: str = "<|im_end|>"
     max_prompt_chars: int = 12000  # ~3–4k tokens proxy for CPU models
     cors_origins: str = "http://127.0.0.1:5173,http://localhost:5173"
 

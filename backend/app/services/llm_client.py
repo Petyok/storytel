@@ -13,8 +13,36 @@ import httpx
 from app.core.config import settings
 
 
+def _stop_list_from_settings() -> list[str]:
+    raw = (settings.llm_stop_sequences or "").strip()
+    return [s.strip() for s in raw.split(",") if s.strip()]
+
+
+def _normalize_llm_text(text: str) -> str:
+    """Strip ChatML/Qwen junk so JSON extraction works (chat-tuned models)."""
+    t = text.strip()
+    # Qwen3 / DeepSeek-style thinking blocks (remove before JSON)
+    t = re.sub(r"`</think>`[\s\S]*?`</think>`", "", t)
+    t = re.sub(r"</think>[\s\S]*?</think>", "", t)
+    t = re.sub(r"<think>[\s\S]*?</think>", "", t, flags=re.IGNORECASE)
+    # Leading ChatML role lines (repeat — models may emit several)
+    for _ in range(24):
+        orig = t
+        t = re.sub(r"^<\|im_start\|>[^\n]*\n?", "", t)
+        t = re.sub(r"^<\|im_end\|>\s*", "", t)
+        t = re.sub(r"^<\|assistant\|>\s*", "", t, flags=re.IGNORECASE)
+        if t == orig:
+            break
+        t = t.lstrip()
+    # Keep only text before trailing EOS markers (JSON should come first)
+    for marker in ("<|im_end|>", "<|endoftext|>"):
+        if marker in t:
+            t = t.split(marker, 1)[0]
+    return t.strip()
+
+
 def _extract_json_object(text: str) -> dict[str, Any] | None:
-    text = text.strip()
+    text = _normalize_llm_text(text)
     # Strip markdown fences
     if "```" in text:
         m = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
@@ -76,23 +104,38 @@ class LlamaCppClient:
         self.timeout = timeout if timeout is not None else settings.llm_timeout_sec
         self._api_style = (settings.llm_api_style or "openai_completions").strip().lower()
 
-    def _build_payload(self, prompt: str, max_tokens: int) -> dict[str, Any]:
+    def _build_payload(
+        self,
+        prompt: str,
+        max_tokens: int,
+        *,
+        temperature: float | None = None,
+        stop: list[str] | None = None,
+    ) -> dict[str, Any]:
+        temp = float(settings.llm_temperature if temperature is None else temperature)
+        stops = stop if stop is not None else _stop_list_from_settings()
         if self._api_style == "native":
-            return {
+            payload: dict[str, Any] = {
                 "prompt": prompt,
                 "n_predict": max_tokens,
-                "temperature": settings.llm_temperature,
+                "temperature": temp,
                 "top_p": settings.llm_top_p,
                 "repeat_penalty": settings.llm_repeat_penalty,
             }
-        return {
+            if stops:
+                payload["stop"] = stops
+            return payload
+        payload = {
             "model": settings.llm_openai_model,
             "prompt": prompt,
             "max_tokens": max_tokens,
-            "temperature": settings.llm_temperature,
+            "temperature": temp,
             "top_p": settings.llm_top_p,
             "repeat_penalty": settings.llm_repeat_penalty,
         }
+        if stops:
+            payload["stop"] = stops
+        return payload
 
     def _request_headers(self) -> dict[str, str]:
         key = (settings.llm_api_key or "").strip()
@@ -100,10 +143,17 @@ class LlamaCppClient:
             return {"Authorization": f"Bearer {key}"}
         return {}
 
-    def complete(self, prompt: str, max_tokens: int | None = None) -> str:
+    def complete(
+        self,
+        prompt: str,
+        max_tokens: int | None = None,
+        *,
+        temperature: float | None = None,
+        stop: list[str] | None = None,
+    ) -> str:
         url = f"{self.base_url}{self.completion_path}"
         mt = max_tokens or settings.llm_max_tokens
-        payload = self._build_payload(prompt, mt)
+        payload = self._build_payload(prompt, mt, temperature=temperature, stop=stop)
         headers = self._request_headers()
         with httpx.Client(timeout=self.timeout) as client:
             r = client.post(url, json=payload, headers=headers)
@@ -118,6 +168,9 @@ class LlamaCppClient:
         prompt: str,
         max_tokens: int | None = None,
         on_attempt: Callable[[int, int], None] | None = None,
+        *,
+        temperature: float | None = None,
+        stop: list[str] | None = None,
     ) -> tuple[str, int, str | None]:
         """
         Returns (raw_text, attempts_used, last_error).
@@ -134,7 +187,16 @@ class LlamaCppClient:
             if on_attempt is not None:
                 on_attempt(attempts, max_tries)
             try:
-                return self.complete(prompt, max_tokens=max_tokens), attempts, None
+                return (
+                    self.complete(
+                        prompt,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        stop=stop,
+                    ),
+                    attempts,
+                    None,
+                )
             except httpx.HTTPStatusError as e:
                 code = e.response.status_code if e.response is not None else 0
                 last_err = f"http_{code}"
@@ -165,6 +227,14 @@ def parse_llm_game_response(raw: str) -> tuple[dict[str, Any] | None, str | None
         return None, "missing_keys"
     scene = obj.get("scene")
     choices = obj.get("choices")
+    if isinstance(choices, str):
+        try:
+            parsed_ch = json.loads(choices.strip())
+            if isinstance(parsed_ch, list):
+                choices = parsed_ch
+                obj["choices"] = parsed_ch
+        except json.JSONDecodeError:
+            pass
     if not isinstance(scene, str) or not scene.strip():
         return None, "empty_scene"
     if not isinstance(choices, list) or len(choices) < 2 or len(choices) > 4:

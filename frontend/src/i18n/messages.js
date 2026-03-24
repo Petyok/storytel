@@ -35,6 +35,9 @@ export const MESSAGES = {
     needSessionId: "Enter a session id or pick one from the list.",
 
     llmAttempts: "LLM attempts",
+    llmAttemptsTip:
+      "Total HTTP calls to the model this turn. The engine retries up to “per round” times, and up to “waves” rounds if JSON is invalid (e.g. 4×3 = 12 max).",
+    llmAttemptsDetail: "{n} HTTP calls (≤{per} per round × {waves} JSON rounds)",
     lastCheck: "Last check",
 
     freeActionLabel: "Your action (free text)",
@@ -171,6 +174,9 @@ export const MESSAGES = {
     needSessionId: "Введите id сессии или выберите из списка.",
 
     llmAttempts: "Попыток к LLM",
+    llmAttemptsTip:
+      "Всего HTTP-запросов к модели за этот ход. До «per» попыток за раунд и до «waves» раундов, если JSON невалиден (например 4×3 = 12 максимум).",
+    llmAttemptsDetail: "{n} HTTP-запросов (≤{per} за раунд × {waves} раунда JSON)",
     lastCheck: "Последняя проверка",
 
     freeActionLabel: "Ваш ход (свободный текст)",
