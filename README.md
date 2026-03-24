@@ -32,6 +32,20 @@ chmod +x install.sh
 
 This creates `.venv`, installs `backend/requirements.txt`, and runs `npm install` in `frontend/`. To use system Python instead of a venv: `./install.sh --system`.
 
+## Run (one script)
+
+After install:
+
+```bash
+chmod +x run.sh
+./run.sh
+```
+
+Starts **uvicorn** on port `8000` (background) and **Vite** on `5173` (foreground). Press **Ctrl+C** to stop both.
+
+- Use system Python: `./run.sh --system` (requires dependencies on `PATH`).
+- Change ports: `API_PORT=9000 FRONTEND_PORT=5174 ./run.sh` — if you change `API_PORT`, update the `proxy` target in `frontend/vite.config.js` to match.
+
 ## Backend
 
 ```bash
