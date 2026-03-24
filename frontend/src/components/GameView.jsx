@@ -7,6 +7,19 @@ import ScenePanel from "./ScenePanel.jsx";
 import Sidebar from "./Sidebar.jsx";
 import { useI18n } from "../i18n/I18nProvider.jsx";
 
+const SKILL_KEYS = [
+  "athletics",
+  "stealth",
+  "perception",
+  "persuasion",
+  "survival",
+  "arcana",
+  "medicine",
+  "insight",
+  "intimidation",
+  "investigation",
+];
+
 /**
  * @param {{
  *   sessionId: string,
@@ -24,7 +37,14 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
   const [busy, setBusy] = useState(false);
   const [busyKind, setBusyKind] = useState(/** @type {'session' | 'action'} */ ("session"));
   const [error, setError] = useState("");
-  const [lastMeta, setLastMeta] = useState({ llmOk: true, effects: [] });
+  const [freeDraft, setFreeDraft] = useState("");
+  const [lastMeta, setLastMeta] = useState({
+    llmOk: true,
+    llmFallback: false,
+    attempts: 0,
+    effects: [],
+    lastCheck: null,
+  });
 
   const load = useCallback(async (id) => {
     setError("");
@@ -36,7 +56,7 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
       setScene(data.last_scene || "");
       setChoices(data.choices || []);
       setNotices(data.notices || []);
-      setLastMeta({ llmOk: true, effects: [] });
+      setLastMeta({ llmOk: true, llmFallback: false, attempts: 0, effects: [], lastCheck: null });
       try {
         const lst = await fetchSessions();
         setSessions(lst.sessions || []);
@@ -59,17 +79,29 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
     load(sessionId);
   }, [sessionId, load]);
 
+  function applyActionResponse(data) {
+    setState(data.state);
+    setScene(data.scene);
+    setChoices(data.choices || []);
+    setNotices(data.notices || []);
+    const fb = data.llm_fallback === true;
+    const ok = data.llm_ok !== false && !fb;
+    setLastMeta({
+      llmOk: ok,
+      llmFallback: fb,
+      attempts: data.llm_attempts ?? 0,
+      effects: data.effects_applied || [],
+      lastCheck: data.last_skill_check || null,
+    });
+  }
+
   async function onChoose(choice) {
     setError("");
     setBusyKind("action");
     setBusy(true);
     try {
-      const data = await postAction(sessionId, choice);
-      setState(data.state);
-      setScene(data.scene);
-      setChoices(data.choices || []);
-      setNotices(data.notices || []);
-      setLastMeta({ llmOk: data.llm_ok !== false, effects: data.effects_applied || [] });
+      const data = await postAction(sessionId, { choice, free_text: freeDraft });
+      applyActionResponse(data);
       try {
         const lst = await fetchSessions();
         setSessions(lst.sessions || []);
@@ -82,6 +114,31 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
       setBusy(false);
     }
   }
+
+  async function onSubmitFree(e) {
+    e.preventDefault();
+    const text = freeDraft.trim();
+    if (!text) return;
+    setError("");
+    setBusyKind("action");
+    setBusy(true);
+    try {
+      const data = await postAction(sessionId, { choice: "", free_text: text });
+      applyActionResponse(data);
+      try {
+        const lst = await fetchSessions();
+        setSessions(lst.sessions || []);
+      } catch {
+        /* ignore */
+      }
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const effectLine = (lastMeta.effects || []).filter((x) => !String(x).startsWith("check:")).join(", ");
 
   return (
     <div className="app game-view">
@@ -143,14 +200,24 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
         </div>
         <div className="meta-bar mono small">
           {lastMeta.llmOk ? <span className="ok">{t("llmOk")}</span> : <span className="warn">{t("llmFallback")}</span>}
-          {lastMeta.effects?.length > 0 && (
+          {lastMeta.attempts > 1 && (
+            <span className="muted" title={t("llmAttempts")}>
+              {" "}
+              · {t("llmAttempts")}: {lastMeta.attempts}
+            </span>
+          )}
+          {effectLine && (
             <span className="muted" title={t("engineEffects")}>
               {" "}
-              · {lastMeta.effects.join(", ")}
+              · {effectLine}
             </span>
           )}
         </div>
       </div>
+
+      {lastMeta.lastCheck && (
+        <div className="skill-check-banner muted small mono">{lastMeta.lastCheck}</div>
+      )}
 
       <HUD player={state?.player} world={state?.world} />
 
@@ -160,8 +227,26 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
         <main className="main">
           <ScenePanel scene={scene} notices={notices} state={state} />
           <ChoiceList choices={choices} disabled={busy} onChoose={onChoose} />
+          <form className="free-action" onSubmit={onSubmitFree}>
+            <label className="free-action-label" htmlFor="free-act">
+              {t("freeActionLabel")}
+            </label>
+            <div className="free-action-row">
+              <input
+                id="free-act"
+                className="free-action-input"
+                placeholder={t("freeActionPlaceholder")}
+                value={freeDraft}
+                disabled={busy}
+                onChange={(e) => setFreeDraft(e.target.value)}
+              />
+              <button type="submit" className="btn" disabled={busy || !freeDraft.trim()}>
+                {t("freeActionSubmit")}
+              </button>
+            </div>
+          </form>
         </main>
-        <Sidebar state={state} />
+        <Sidebar state={state} skillKeys={SKILL_KEYS} />
       </div>
 
       <footer className="footer muted small mono">{t("footer")}</footer>

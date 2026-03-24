@@ -22,7 +22,10 @@ function AppShell() {
       <MainMenu
         selectedId={sessionId}
         onSelectId={setSessionId}
-        onEnterGame={() => setInGame(true)}
+        onStartSession={(id) => {
+          setSessionId(id);
+          setInGame(true);
+        }}
       />
     );
   }

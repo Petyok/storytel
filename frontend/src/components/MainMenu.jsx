@@ -6,10 +6,10 @@ import { useI18n } from "../i18n/I18nProvider.jsx";
  * @param {{
  *   selectedId: string,
  *   onSelectId: (id: string) => void,
- *   onEnterGame: () => void,
+ *   onStartSession: (id: string) => void,
  * }} props
  */
-export default function MainMenu({ selectedId, onSelectId, onEnterGame }) {
+export default function MainMenu({ selectedId, onSelectId, onStartSession }) {
   const { lang, setLang, t } = useI18n();
   const [sessions, setSessions] = useState([]);
   const [listLoading, setListLoading] = useState(true);
@@ -21,6 +21,18 @@ export default function MainMenu({ selectedId, onSelectId, onEnterGame }) {
   const [playerBackstory, setPlayerBackstory] = useState("");
   const [worldLocation, setWorldLocation] = useState("");
   const [worldPremise, setWorldPremise] = useState("");
+
+  const setupPayload = () => ({
+    language: lang,
+    player: {
+      name: playerName.trim() || undefined,
+      backstory: playerBackstory.trim() || undefined,
+    },
+    world: {
+      location: worldLocation.trim() || undefined,
+      premise: worldPremise.trim() || undefined,
+    },
+  });
 
   async function refreshList() {
     setListLoading(true);
@@ -39,29 +51,26 @@ export default function MainMenu({ selectedId, onSelectId, onEnterGame }) {
     refreshList();
   }, []);
 
-  async function handleCreate() {
-    const id = newId.trim();
-    if (!id) return;
+  async function handlePlay() {
+    const id = newId.trim() || selectedId.trim();
+    if (!id) {
+      setError(t("needSessionId"));
+      return;
+    }
     setError("");
     setBusy(true);
     try {
-      await createSession(id, overwrite, {
-        language: lang,
-        player: {
-          name: playerName.trim() || undefined,
-          backstory: playerBackstory.trim() || undefined,
-        },
-        world: {
-          location: worldLocation.trim() || undefined,
-          premise: worldPremise.trim() || undefined,
-        },
-      });
-      setNewId("");
-      setOverwrite(false);
+      const exists = sessions.includes(id);
+      if (!exists) {
+        await createSession(id, false, setupPayload());
+      } else if (overwrite) {
+        await createSession(id, true, setupPayload());
+      }
       await refreshList();
       onSelectId(id);
+      onStartSession(id);
     } catch (e) {
-      const st = /** @type {{ status?: number, message?: string }} */ (e).status;
+      const st = /** @type {{ status?: number }} */ (e).status;
       const msg = String(e?.message || e);
       if (st === 409 || msg.includes("409") || msg.toLowerCase().includes("already")) {
         setError(t("createError409"));
@@ -71,25 +80,6 @@ export default function MainMenu({ selectedId, onSelectId, onEnterGame }) {
     } finally {
       setBusy(false);
     }
-  }
-
-  async function handleEnterGame() {
-    const id = selectedId?.trim();
-    if (!id) return;
-    if (!sessions.includes(id)) {
-      setBusy(true);
-      setError("");
-      try {
-        await createSession(id, false, { language: lang });
-        await refreshList();
-      } catch (e) {
-        setError(String(e?.message || e));
-        setBusy(false);
-        return;
-      }
-      setBusy(false);
-    }
-    onEnterGame();
   }
 
   return (
@@ -126,11 +116,7 @@ export default function MainMenu({ selectedId, onSelectId, onEnterGame }) {
             disabled={busy}
             onChange={(e) => onSelectId(e.target.value)}
           >
-            {selectedId && !sessions.includes(selectedId) && (
-              <option value={selectedId}>
-                {selectedId}
-              </option>
-            )}
+            {selectedId && !sessions.includes(selectedId) && <option value={selectedId}>{selectedId}</option>}
             {sessions.map((s) => (
               <option key={s} value={s}>
                 {s}
@@ -145,9 +131,10 @@ export default function MainMenu({ selectedId, onSelectId, onEnterGame }) {
           </button>
         </div>
 
-        <h2 className="main-menu-section">{t("createSession")}</h2>
+        <h2 className="main-menu-section">{t("newGameSection")}</h2>
         <p className="muted small main-menu-hint">{t("newSessionHint")}</p>
         <div className="main-menu-create">
+          <label className="main-menu-fieldlabel">{t("newSessionName")}</label>
           <input
             className="main-menu-input"
             placeholder={t("newSessionName")}
@@ -155,7 +142,7 @@ export default function MainMenu({ selectedId, onSelectId, onEnterGame }) {
             disabled={busy}
             onChange={(e) => setNewId(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") handleCreate();
+              if (e.key === "Enter") handlePlay();
             }}
           />
           <label className="main-menu-fieldlabel">{t("playerName")}</label>
@@ -191,29 +178,16 @@ export default function MainMenu({ selectedId, onSelectId, onEnterGame }) {
             onChange={(e) => setWorldPremise(e.target.value)}
           />
           <label className="main-menu-check">
-            <input
-              type="checkbox"
-              checked={overwrite}
-              disabled={busy}
-              onChange={(e) => setOverwrite(e.target.checked)}
-            />
+            <input type="checkbox" checked={overwrite} disabled={busy} onChange={(e) => setOverwrite(e.target.checked)} />
             {t("overwrite")}
           </label>
-          <button type="button" className="btn" disabled={busy || !newId.trim()} onClick={handleCreate}>
-            {busy ? t("creating") : t("createSession")}
-          </button>
         </div>
 
         {error && <div className="banner error main-menu-error">{error}</div>}
 
-        <p className="muted small main-menu-playhint">{t("playHint")}</p>
-        <button
-          type="button"
-          className="btn main-menu-play"
-          disabled={busy || !selectedId?.trim()}
-          onClick={handleEnterGame}
-        >
-          {t("enterGame")}
+        <p className="muted small main-menu-playhint">{t("playSingleHint")}</p>
+        <button type="button" className="btn main-menu-play" disabled={busy} onClick={handlePlay}>
+          {busy ? t("starting") : t("play")}
         </button>
       </div>
     </div>

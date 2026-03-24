@@ -13,6 +13,19 @@ from typing import Any
 
 from app.models.schemas import NPCState, PlayerView, QuestsView, UnifiedStateView, WorldView
 
+BASE_SKILLS: tuple[str, ...] = (
+    "athletics",
+    "stealth",
+    "perception",
+    "persuasion",
+    "survival",
+    "arcana",
+    "medicine",
+    "insight",
+    "intimidation",
+    "investigation",
+)
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -57,6 +70,17 @@ def _normalize_main_character(raw: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(flags, dict):
         flags = {}
     status = str(raw.get("status", "steady"))
+    sk_in = raw.get("skills")
+    skills: dict[str, int] = {}
+    if isinstance(sk_in, dict):
+        for k in BASE_SKILLS:
+            try:
+                skills[k] = max(-5, min(5, int(sk_in.get(k, 0))))
+            except (TypeError, ValueError):
+                skills[k] = 0
+    else:
+        for k in BASE_SKILLS:
+            skills[k] = 0
     return {
         "name": str(raw.get("name", "Wanderer")),
         "description": str(raw.get("description", "")),
@@ -65,6 +89,7 @@ def _normalize_main_character(raw: dict[str, Any]) -> dict[str, Any]:
         "gold": max(0, gold),
         "status": status,
         "flags": flags,
+        "skills": skills,
         "created_at": raw.get("created_at"),
     }
 
@@ -242,6 +267,14 @@ def merge_to_unified(sf: SessionFiles) -> UnifiedStateView:
 
     npcs = [NPCState(**n) for n in w.get("npcs", []) if isinstance(n, dict)]
 
+    sk_map = mc.get("skills") if isinstance(mc.get("skills"), dict) else {}
+    skills_out: dict[str, int] = {}
+    for k in BASE_SKILLS:
+        try:
+            skills_out[k] = max(-5, min(5, int(sk_map.get(k, 0))))
+        except (TypeError, ValueError):
+            skills_out[k] = 0
+
     player = PlayerView(
         hp=mc["hp"],
         gold=mc["gold"],
@@ -249,6 +282,7 @@ def merge_to_unified(sf: SessionFiles) -> UnifiedStateView:
         inventory=inv_summaries,
         flags=mc["flags"],
         name=mc["name"],
+        skills=skills_out,
     )
     world = WorldView(
         location=w["location"],
@@ -276,6 +310,7 @@ def apply_unified_to_files(sf: SessionFiles, unified: UnifiedStateView) -> None:
         "gold": p.gold,
         "status": p.status,
         "flags": dict(p.flags),
+        "skills": {k: int(p.skills.get(k, 0)) for k in BASE_SKILLS},
         "created_at": prev_mc.get("created_at") or _utc_now(),
     }
 

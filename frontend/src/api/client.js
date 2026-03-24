@@ -19,11 +19,17 @@ export async function fetchSession(sessionId) {
   return res.json();
 }
 
-export async function postAction(sessionId, choice) {
+/**
+ * @param {string} sessionId
+ * @param {{ choice?: string, free_text?: string }} [payload]
+ */
+export async function postAction(sessionId, payload = {}) {
+  const choice = payload.choice ?? "";
+  const free_text = payload.free_text ?? "";
   const res = await fetch(`/session/${encodeURIComponent(sessionId)}/action`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ choice }),
+    body: JSON.stringify({ choice, free_text }),
   });
   if (!res.ok) throw new Error(await parseError(res));
   return res.json();

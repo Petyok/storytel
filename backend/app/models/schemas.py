@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class PlayerFlag(BaseModel):
@@ -20,6 +20,7 @@ class PlayerView(BaseModel):
     inventory: list[str] = Field(default_factory=list)
     flags: dict[str, Any] = Field(default_factory=dict)
     name: str = "Wanderer"
+    skills: dict[str, int] = Field(default_factory=dict)
 
 
 class WorldView(BaseModel):
@@ -52,7 +53,18 @@ class SessionGetResponse(BaseModel):
 
 
 class ActionRequest(BaseModel):
-    choice: str = Field(..., min_length=1, max_length=2000)
+    """Either click a choice, type free text, or both in one turn."""
+
+    choice: str = Field(default="", max_length=2000)
+    free_text: str = Field(default="", max_length=2000)
+
+    @model_validator(mode="after")
+    def require_some_action(self) -> "ActionRequest":
+        c = (self.choice or "").strip()
+        f = (self.free_text or "").strip()
+        if not c and not f:
+            raise ValueError("choice_or_free_text_required")
+        return self
 
 
 class ActionResponse(BaseModel):
@@ -63,6 +75,9 @@ class ActionResponse(BaseModel):
     state: UnifiedStateView
     llm_ok: bool = True
     effects_applied: list[str] = Field(default_factory=list)
+    llm_attempts: int = 0
+    llm_fallback: bool = False
+    last_skill_check: str | None = None
 
 
 class SessionsListResponse(BaseModel):

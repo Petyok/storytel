@@ -291,6 +291,13 @@ code {
   padding: 0.25rem 0;
   border-bottom: 1px solid #1e222c;
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
+
+.inv-list li {
+  flex-direction: row;
   align-items: flex-start;
   gap: 0.35rem;
 }
@@ -306,6 +313,72 @@ code {
 
 .quest-desc {
   display: block;
+}
+
+.skill-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.75rem;
+  font-size: 0.78rem;
+}
+
+.skill-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid #1e222c;
+}
+
+.skill-name {
+  color: var(--text);
+}
+
+.skill-mod {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.skill-check-banner {
+  margin: 0.35rem 0 0;
+  padding: 0.35rem 0.5rem;
+  border-left: 2px solid var(--accent);
+  background: rgba(90, 140, 200, 0.08);
+}
+
+.free-action {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.free-action-label {
+  display: block;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.4rem;
+}
+
+.free-action-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+
+.free-action-input {
+  flex: 1 1 12rem;
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.9rem;
 }
 
 .minimap {
@@ -353,6 +426,14 @@ code {
   border-radius: 8px;
   background: var(--panel);
   max-width: 22rem;
+}
+
+.loading-retry {
+  margin-top: 0.65rem;
+  line-height: 1.35;
+  max-width: 18rem;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .loading-spinner {

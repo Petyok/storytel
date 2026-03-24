@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Any
 
 import httpx
@@ -66,6 +67,43 @@ class LlamaCppClient:
             ch0 = (data.get("choices") or [{}])[0]
             content = (ch0.get("text") or ch0.get("message", {}).get("content") or "").strip()
         return str(content).strip()
+
+    def complete_with_retries(
+        self,
+        prompt: str,
+        max_tokens: int | None = None,
+    ) -> tuple[str, int, str | None]:
+        """
+        Returns (raw_text, attempts_used, last_error).
+        Retries on 5xx, timeouts, and connection errors until max retries.
+        """
+        attempts = 0
+        last_err: str | None = None
+        max_tries = max(1, int(settings.llm_max_retries))
+        backoff = float(settings.llm_retry_backoff_sec)
+
+        for attempt in range(max_tries):
+            attempts = attempt + 1
+            try:
+                return self.complete(prompt, max_tokens=max_tokens), attempts, None
+            except httpx.HTTPStatusError as e:
+                code = e.response.status_code if e.response is not None else 0
+                last_err = f"http_{code}"
+                if code >= 500 and attempt < max_tries - 1:
+                    time.sleep(backoff * (2**attempt))
+                    continue
+                return "", attempts, last_err
+            except (httpx.TimeoutException, httpx.ConnectError, httpx.NetworkError) as e:
+                last_err = type(e).__name__
+                if attempt < max_tries - 1:
+                    time.sleep(backoff * (2**attempt))
+                    continue
+                return "", attempts, last_err
+            except Exception as e:
+                last_err = type(e).__name__
+                return "", attempts, last_err
+
+        return "", attempts, last_err or "unknown"
 
 
 def parse_llm_game_response(raw: str) -> tuple[dict[str, Any] | None, str | None]:

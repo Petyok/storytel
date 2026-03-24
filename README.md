@@ -65,6 +65,9 @@ Environment (optional):
 | `LLM_TIMEOUT_SEC` | `120` | HTTP timeout |
 | `MAX_PROMPT_CHARS` | `12000` | Hard cap on assembled prompt |
 | `CORS_ORIGINS` | `http://127.0.0.1:5173,...` | Browser origins |
+| `LLM_MAX_RETRIES` | `4` | Retries on LLM 5xx / timeout / bad JSON before fallback |
+| `LLM_RETRY_BACKOFF_SEC` | `0.6` | Base backoff between retries (seconds) |
+| `MADNESS_LIGHT_PER_MAD` | `50` | Story cadence: this many “light” turns, then one “mad” turn |
 
 Endpoints:
 
@@ -72,7 +75,7 @@ Endpoints:
 - `GET /sessions` — list session folder names
 - `POST /sessions` — body `{"session_id":"my_save","overwrite":false}` → create (or reset with `overwrite: true`), returns same shape as `GET /session/{id}`; `409` if exists and not overwriting
 - `GET /session/{id}` — merged state + last scene + pending choices
-- `POST /session/{id}/action` — body `{"choice":"..."}` → new scene, choices, updated state (auto-saves JSON)
+- `POST /session/{id}/action` — body `{"choice":"...","free_text":"..."}` (at least one non-empty) → new scene, choices, updated state (auto-saves JSON). Response includes `llm_attempts`, `llm_fallback`, `last_skill_check`.
 
 ## llama.cpp (HTTP)
 

@@ -25,15 +25,43 @@ function QuestBlock({ title, quests, empty }) {
   );
 }
 
-export default function Sidebar({ state }) {
+function formatMod(n) {
+  const v = Number(n) || 0;
+  if (v >= 0) return `+${v}`;
+  return String(v);
+}
+
+/**
+ * @param {{ state: any, skillKeys?: string[] }} props
+ */
+export default function Sidebar({ state, skillKeys = [] }) {
   const { t } = useI18n();
   const inv = state?.player?.inventory ?? [];
   const active = state?.quests?.active ?? [];
   const done = state?.quests?.completed ?? [];
   const map = state?.world?.ascii_map ?? "";
+  const skills = state?.player?.skills ?? {};
 
   return (
     <aside className="sidebar">
+      {skillKeys.length > 0 && (
+        <>
+          <h3 className="panel-title">{t("skillsTitle")}</h3>
+          <ul className="skill-list">
+            {skillKeys.map((k) => {
+              const labelKey = `skill_${k}`;
+              const label = t(labelKey) === labelKey ? k : t(labelKey);
+              return (
+                <li key={k}>
+                  <span className="skill-name">{label}</span>
+                  <span className="skill-mod mono">{formatMod(skills[k])}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
+
       <h3 className="panel-title">{t("inventory")}</h3>
       <ul className="inv-list">
         {inv.length === 0 && <li className="muted small">{t("invEmpty")}</li>}

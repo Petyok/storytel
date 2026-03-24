@@ -102,7 +102,11 @@ def post_action(session_id: str, body: ActionRequest) -> ActionResponse:
     sf = load_session(session_id, settings.sessions_dir)
     bootstrap_if_empty(sf)
     sf.load()
-    scene, choices, unified, eff, llm_ok = run_turn(sf, body.choice)
+    scene, choices, unified, eff, llm_ok, llm_attempts, llm_fallback, sk_line = run_turn(
+        sf,
+        (body.choice or "").strip(),
+        (body.free_text or "").strip(),
+    )
     notices = extract_notices(scene, unified)
     return ActionResponse(
         session_id=session_id,
@@ -112,4 +116,7 @@ def post_action(session_id: str, body: ActionRequest) -> ActionResponse:
         state=unified,
         llm_ok=llm_ok,
         effects_applied=eff,
+        llm_attempts=llm_attempts,
+        llm_fallback=llm_fallback,
+        last_skill_check=sk_line,
     )

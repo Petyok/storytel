@@ -15,6 +15,9 @@ export default function LoadingOverlay({ visible, kind = "action" }) {
         <div className="loading-spinner" aria-hidden />
         <p className="loading-title">{message}</p>
         <p className="loading-sub muted small">{t("loadingShort")}</p>
+        {kind === "action" && (
+          <p className="loading-retry muted small">{t("loadingRetryHint")}</p>
+        )}
       </div>
     </div>
   );

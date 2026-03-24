@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any
@@ -13,7 +14,7 @@ from typing import Any
 from app.core.config import settings
 from app.models.schemas import UnifiedStateView
 from app.services.llm_client import LlamaCppClient, parse_llm_game_response
-from app.services.state_store import SessionFiles, apply_unified_to_files, merge_to_unified
+from app.services.state_store import BASE_SKILLS, SessionFiles, apply_unified_to_files, merge_to_unified
 
 TIME_ORDER = ["dawn", "morning", "noon", "dusk", "night", "witching_hour"]
 
@@ -82,45 +83,123 @@ def _fallback_payload(lang: str) -> dict[str, Any]:
     }
 
 
-def _opening_seed_payload(lang: str, player_name: str, world_location: str) -> tuple[str, list[str], str]:
+def _opening_seed_payload(lang: str, player_name: str, world_location: str) -> tuple[str, list[str]]:
+    """Grounded opening oriented toward finding rest / a tavern."""
     if lang == "ru":
         scene = (
-            f"{player_name} останавливается у '{world_location}'. Холодный воздух идёт из камня, "
-            "будто за стеной дышит что-то живое. На пороге заметен свежий след золы, но второго шага нет."
+            f"{player_name} сворачивает к «{world_location}». Улица редкая; из-за угла тянет дымом и жаром — "
+            "где-то готовят еду. Дверь трактира приоткрыта, но шаги позади не совпадают с вашим темпом."
         )
-        choices = [
-            "Проверить след и осмотреть порог",
-            "Позвать стража и предложить сделку",
-            "Обойти ворота, ища тайный проход",
-        ]
-        quest_title = "Переступить порог"
+        choices = ["Зайти в трактир", "Остановиться и осмотреться", "Скрыться в переулке"]
     else:
         scene = (
-            f"{player_name} pauses at '{world_location}'. Cold air leaks through the stone as if something behind it is breathing. "
-            "A fresh ash print marks the threshold, but there is no second step."
+            f"{player_name} reaches '{world_location}'. The street is sparse; smoke and heat drift from a side yard—someone is cooking. "
+            "A tavern door stands ajar, but the footsteps behind you don't match your pace."
         )
-        choices = [
-            "Inspect the ash print and threshold",
-            "Call for the warden and offer a bargain",
-            "Circle the gate and search for a hidden way in",
-        ]
-        quest_title = "Cross the threshold"
-    return scene, choices, quest_title
+        choices = ["Enter the tavern", "Pause and scan the street", "Slip into a side alley"]
+    return scene, choices
+
+
+def _rest_quest_seed(lang: str) -> tuple[str, str]:
+    if lang == "ru":
+        return (
+            "Найти место отдыха",
+            "Узнай, где можно переждать ночь: трактир, постоялый двор или укромный угол без лишних вопросов.",
+        )
+    return (
+        "Find a place to rest",
+        "Learn where you can wait out the night—a tavern, an inn, or a quiet corner without too many questions.",
+    )
+
+
+def _skills_from_backstory(backstory: str) -> dict[str, int]:
+    text = (backstory or "").lower()
+    scores = {k: 0 for k in BASE_SKILLS}
+    pairs: list[tuple[list[str], str]] = [
+        (["climb", "run", "jump", "swim", "лез", "бег", "прыг", "сил"], "athletics"),
+        (["sneak", "hide", "quiet", "крад", "тих", "скрыт"], "stealth"),
+        (["listen", "watch", "track", "слуш", "замет", "ищ", "вид"], "perception"),
+        (["talk", "charm", "negot", "говор", "убежд", "торг"], "persuasion"),
+        (["wild", "forest", "trail", "camp", "лес", "охот", "след", "дорог"], "survival"),
+        (["magic", "spell", "arcane", "маг", "заклин", "руны"], "arcana"),
+        (["heal", "herb", "poison", "лекар", "яд", "ран", "целит"], "medicine"),
+        (["read", "lie", "motive", "чувств", "лже", "намер"], "insight"),
+        (["threat", "scare", "intimid", "запуг", "страх"], "intimidation"),
+        (["search", "clue", "puzzle", "осмотр", "улик", "разгад"], "investigation"),
+    ]
+    for keys, skill in pairs:
+        for k in keys:
+            if k in text:
+                scores[skill] += 1
+                break
+    out: dict[str, int] = {}
+    for k in BASE_SKILLS:
+        v = scores[k]
+        out[k] = min(3, max(-2, v)) if v else 0
+    return out
+
+
+def _is_mad_turn(turn_before_increment: int) -> bool:
+    n = max(1, int(settings.madness_light_per_mad))
+    cycle = n + 1
+    return (turn_before_increment % cycle) == n
+
+
+def _format_player_action(choice: str, free_text: str) -> str:
+    c = (choice or "").strip()
+    f = (free_text or "").strip()
+    parts: list[str] = []
+    if c:
+        parts.append(f"Chosen button: {c}")
+    if f:
+        parts.append(f"Player says/does: {f}")
+    return "\n".join(parts)
+
+
+def _mixed_skill_check(action_text: str, lang: str, skills: dict[str, int], danger: int) -> tuple[str | None, str | None]:
+    """Returns (prompt_line, short_tag for effects)."""
+    t = (action_text or "").lower()
+    if len(t) < 6:
+        return None, None
+    # keyword → skill
+    rules: list[tuple[tuple[str, ...], str]] = [
+        (("climb", "jump", "swim", "run", "lift", "лез", "прыг", "плы", "бег", "сил"), "athletics"),
+        (("hide", "sneak", "quiet", "крад", "тих", "скры"), "stealth"),
+        (("listen", "look", "search", "track", "слуш", "смотр", "ищ", "осмотр"), "perception"),
+        (("talk", "persuade", "lie", "charm", "говор", "убежд", "лже"), "persuasion"),
+        (("wild", "trail", "camp", "forest", "лес", "дорог", "след"), "survival"),
+        (("magic", "spell", "arcane", "маг", "заклин"), "arcana"),
+        (("heal", "treat", "poison", "лекар", "яд", "ран"), "medicine"),
+        (("read", "intent", "motive", "чувств", "намер"), "insight"),
+        (("threat", "scare", "intimid", "запуг"), "intimidation"),
+        (("investigate", "clue", "study", "улик", "разгад"), "investigation"),
+    ]
+    picked: str | None = None
+    for keys, sk in rules:
+        if any(k in t for k in keys):
+            picked = sk
+            break
+    if not picked:
+        return None, None
+    mod = int(skills.get(picked, 0))
+    dc = min(20, max(8, 12 + danger // 2))
+    d20 = secrets.randbelow(20) + 1
+    total = d20 + mod
+    ok = total >= dc
+    if lang == "ru":
+        line = f"Проверка: {picked} — d20({d20}){mod:+d} = {total} против СЛ {dc}: {'успех' if ok else 'провал'}."
+        tag = f"check:{picked}|{d20}|{mod}|{dc}|{'ok' if ok else 'fail'}"
+    else:
+        line = f"Check: {picked} — d20({d20}){mod:+d} = {total} vs DC {dc}: {'success' if ok else 'failure'}."
+        tag = f"check:{picked}|{d20}|{mod}|{dc}|{'ok' if ok else 'fail'}"
+    return line, tag
 
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-SYSTEM_PROMPT_TEMPLATE = """You are a dark fantasy game master.
-
-Rules:
-- Never write passive descriptions only
-- NPCs must be proactive
-- Every turn must change the situation
-- Every action must have consequences
-- Include at least one hidden element (do not reveal it plainly in scene; put a clue in effects_hint only)
-- End the JSON with 2-4 player choices (short labels, actionable)
+SYSTEM_PROMPT_BASE = """You are a dark fantasy game master.
 
 Use current game state:
 {state_json}
@@ -128,17 +207,41 @@ Use current game state:
 Respond ONLY with a single JSON object (no markdown, no prose outside JSON):
 {{"scene":"...","choices":["...","..."],"effects_hint":"short hidden note for engine; optional tags: hp+/-N gold+/-N danger+/-N time+1 flag:name item+:Name item-:Name trust:NPCName+/-N quest+:title|desc quest~:id|completed|note"}}"""
 
+STORY_MODE_MAD_RULES = """
+Pacing mode: MAD (1 in {cycle} turns).
+Rules:
+- Never write passive descriptions only
+- NPCs must be proactive
+- Every turn must change the situation
+- Every action must have consequences
+- Include at least one hidden element (do not reveal it plainly in scene; put a clue in effects_hint only)
+- End the JSON with 2-4 player choices (short labels, actionable)
+"""
+
+STORY_MODE_LIGHT_RULES = """
+Pacing mode: LIGHT ({n} of every {cycle} turns).
+Rules:
+- Write a short calm slice of atmosphere (about 2-4 sentences). Grounded, sensory, everyday.
+- Do NOT escalate into cosmic horror, prophecy, chosen-one destiny, or world-ending stakes.
+- Do NOT pressure the player with urgent "you must choose now" rhetoric; no cliffhanger questions.
+- Still change one small concrete detail in the environment (sound, smell, light, object, passerby).
+- NPCs may appear but keep interactions ordinary.
+- End with 2-4 mild exploratory choices (low stakes).
+"""
+
 
 def compact_state_for_prompt(u: UnifiedStateView) -> dict[str, Any]:
     inv = u.player.inventory[:12]
     active_q = u.quests.active[:4]
     npcs = [{"n": n.name, "t": n.trust, "h": (n.hidden_intent[:40] + "…") if len(n.hidden_intent) > 40 else n.hidden_intent} for n in u.world.npcs[:6]]
+    sk = {k: int(u.player.skills.get(k, 0)) for k in BASE_SKILLS}
     return {
         "player": {
             "name": u.player.name,
             "hp": u.player.hp,
             "gold": u.player.gold,
             "status": u.player.status,
+            "skills": sk,
             "inv": inv,
             "flags": dict(list(u.player.flags.items())[:16]),
         },
@@ -154,19 +257,27 @@ def compact_state_for_prompt(u: UnifiedStateView) -> dict[str, Any]:
     }
 
 
-def build_user_prompt(last_scene: str, choice: str, recent_lines: list[str]) -> str:
+def build_user_prompt(last_scene: str, action_block: str, recent_lines: list[str], check_line: str | None = None) -> str:
     parts = []
     if recent_lines:
         parts.append("Recent:\n" + "\n".join(recent_lines[-4:]))
     if last_scene:
         parts.append("Previous scene:\n" + last_scene[:800])
-    parts.append(f"Player choice:\n{choice.strip()[:500]}")
+    if check_line:
+        parts.append(check_line)
+    parts.append(f"Player action:\n{action_block.strip()[:900]}")
     parts.append("Narrate the next beat. Output JSON only.")
     return "\n\n".join(parts)
 
 
-def build_full_prompt(state_json: str, user_block: str, lang: str) -> str:
-    system = SYSTEM_PROMPT_TEMPLATE.format(state_json=state_json)
+def build_full_prompt(state_json: str, user_block: str, lang: str, story_mode: str) -> str:
+    n = max(1, int(settings.madness_light_per_mad))
+    cycle = n + 1
+    system = SYSTEM_PROMPT_BASE.format(state_json=state_json)
+    if story_mode == "mad":
+        system += STORY_MODE_MAD_RULES.format(cycle=cycle)
+    else:
+        system += STORY_MODE_LIGHT_RULES.format(n=n, cycle=cycle)
     system = f"{system}\nLanguage rule: {_lang_instruction(lang)}"
     full = system + "\n\n" + user_block
     if len(full) > settings.max_prompt_chars:
@@ -356,10 +467,11 @@ def deterministic_turn_tick(unified: UnifiedStateView, choice_index: int | None)
 def run_turn(
     sf: SessionFiles,
     choice: str,
+    free_text: str = "",
     llm: LlamaCppClient | None = None,
-) -> tuple[str, list[str], UnifiedStateView, list[str], bool]:
+) -> tuple[str, list[str], UnifiedStateView, list[str], bool, int, bool, str | None]:
     """
-    Returns scene, choices, new unified state, effects_applied, llm_ok.
+    Returns scene, choices, unified, effects_applied, llm_ok, llm_attempts, llm_fallback, skill_check_line.
     """
     llm = llm or LlamaCppClient()
     unified = merge_to_unified(sf)
@@ -376,33 +488,45 @@ def run_turn(
             recent.append(f"{role}: {content}")
 
     last_scene = str(sf.history.get("pending_scene", "") or "")
-    user_block = build_user_prompt(last_scene, choice, recent)
+    action_block = _format_player_action(choice, free_text)
+    sk_map = {k: int(unified.player.skills.get(k, 0)) for k in BASE_SKILLS}
+    check_line, check_tag = _mixed_skill_check(action_block, lang, sk_map, unified.world.danger_level)
+    user_block = build_user_prompt(last_scene, action_block, recent, check_line=check_line)
+
+    story_mode = "mad" if _is_mad_turn(unified.world.turn) else "light"
     state_json = json.dumps(compact_state_for_prompt(unified), separators=(",", ":"), ensure_ascii=False)
-    prompt = build_full_prompt(state_json, user_block, lang)
+    prompt = build_full_prompt(state_json, user_block, lang, story_mode)
 
     llm_ok = True
+    llm_fallback = False
+    total_attempts = 0
+    parsed: dict[str, Any] | None = None
     raw = ""
-    try:
-        raw = llm.complete(prompt)
-    except Exception:
-        llm_ok = False
-        raw = ""
 
-    parsed, err = parse_llm_game_response(raw)
+    for _wave in range(3):
+        chunk, att, _http_err = llm.complete_with_retries(prompt)
+        total_attempts += att
+        raw = chunk
+        parsed, _perr = parse_llm_game_response(raw)
+        if parsed:
+            break
+
     if not parsed:
         llm_ok = False
+        llm_fallback = True
         parsed = _fallback_payload(lang)
 
     scene = str(parsed["scene"])
     choices = list(parsed["choices"])
     hint = str(parsed.get("effects_hint", ""))
 
-    # Choice index: match choice string to previous pending choices if possible
+    # Choice index: match pressed button to previous pending choices
     prev_choices = sf.history.get("pending_choices") or []
     choice_idx = None
-    if isinstance(prev_choices, list):
+    c_only = (choice or "").strip()
+    if isinstance(prev_choices, list) and c_only:
         try:
-            norm = choice.strip().lower()
+            norm = c_only.lower()
             for i, c in enumerate(prev_choices):
                 if str(c).strip().lower() == norm:
                     choice_idx = i
@@ -411,10 +535,12 @@ def run_turn(
             pass
 
     eff = apply_effects_hint(hint, unified)
+    if check_tag:
+        eff.append(check_tag)
     eff.extend(deterministic_turn_tick(unified, choice_idx))
 
-    # Append messages
-    messages.append({"role": "user", "content": choice.strip()[:2000], "timestamp": _utc_now()})
+    user_log = action_block[:2000]
+    messages.append({"role": "user", "content": user_log, "timestamp": _utc_now()})
     messages.append({"role": "assistant", "content": scene[:4000], "timestamp": _utc_now()})
 
     sf.history = {
@@ -427,7 +553,7 @@ def run_turn(
     sf.save()
 
     notices = extract_notices(scene, unified)
-    return scene, choices, unified, eff, llm_ok
+    return scene, choices, unified, eff, llm_ok, total_attempts, llm_fallback, check_line
 
 
 def bootstrap_if_empty(
@@ -444,17 +570,30 @@ def bootstrap_if_empty(
     seed_backstory = (player_backstory or "").strip()
     seed_location = (world_location or "").strip() or "Ashen Gate"
     seed_premise = (world_premise or "").strip()
-    opening_scene, opening_choices, default_quest_title = _opening_seed_payload(lang, seed_name, seed_location)
+    opening_scene, opening_choices = _opening_seed_payload(lang, seed_name, seed_location)
+    quest_title, quest_desc = _rest_quest_seed(lang)
+    derived_skills = _skills_from_backstory(seed_backstory)
+    warden = (
+        {"name": "Привратник", "trust": 0, "hidden_intent": "ищет слабое место в словах"}
+        if lang == "ru"
+        else {"name": "Gate Warden", "trust": 0, "hidden_intent": "tests the desperate"}
+    )
+    starter_item = (
+        {"name": "Ржавый кинжал", "quantity": 1, "description": "", "added_at": _utc_now()}
+        if lang == "ru"
+        else {"name": "Rusty dagger", "quantity": 1, "description": "", "added_at": _utc_now()}
+    )
     changed = False
     if not sf.main_character:
         sf.main_character = {
             "name": seed_name,
-            "description": "Hollow-eyed and careful",
+            "description": "Hollow-eyed and careful" if lang != "ru" else "С внимательным взглядом и осторожными руками",
             "backstory": seed_backstory,
             "hp": 100,
             "gold": 0,
             "status": "steady",
             "flags": {"language": lang},
+            "skills": derived_skills,
             "created_at": _utc_now(),
         }
         changed = True
@@ -472,26 +611,37 @@ def bootstrap_if_empty(
         if seed_name and (not sf.main_character.get("name") or sf.main_character.get("name") == "Wanderer"):
             sf.main_character["name"] = seed_name
             changed = True
+        sk0 = sf.main_character.get("skills")
+        if not isinstance(sk0, dict) or len(sk0) == 0:
+            sf.main_character["skills"] = _skills_from_backstory(str(sf.main_character.get("backstory", "")))
+            changed = True
     if not sf.world or (isinstance(sf.world, dict) and not str(sf.world.get("location", "")).strip()):
         sf.world = {
             "location": seed_location,
             "danger_level": 2,
             "time": "night",
-            "secrets": [seed_premise or ("царапина в виде сигила под порогом" if lang == "ru" else "a sigil scratched under the lintel")],
-            "npcs": [{"name": "Gate Warden", "trust": 0, "hidden_intent": "tests the desperate"}],
+            "secrets": [
+                seed_premise
+                or (
+                    "царапина в виде сигила под порогом"
+                    if lang == "ru"
+                    else "a sigil scratched under the lintel"
+                )
+            ],
+            "npcs": [warden],
             "ascii_map": DEFAULT_BOOTSTRAP_ASCII_MAP_RU if lang == "ru" else DEFAULT_BOOTSTRAP_ASCII_MAP,
             "turn": 0,
         }
         changed = True
     if not isinstance(sf.inventory, list) or len(sf.inventory) == 0:
-        sf.inventory = [{"name": "Rusty dagger", "quantity": 1, "description": "", "added_at": _utc_now()}]
+        sf.inventory = [starter_item]
         changed = True
     if not isinstance(sf.quests, list) or len(sf.quests) == 0:
         sf.quests = [
             {
                 "id": 1,
-                "title": default_quest_title,
-                "description": "Найди путь за врата и не потеряй себя." if lang == "ru" else "Find a way past the gate without losing yourself.",
+                "title": quest_title,
+                "description": quest_desc,
                 "status": "active",
                 "created_at": _utc_now(),
                 "notes": [],

@@ -18,5 +18,12 @@ class Settings(BaseSettings):
     max_prompt_chars: int = 12000  # ~3–4k tokens proxy for CPU models
     cors_origins: str = "http://127.0.0.1:5173,http://localhost:5173"
 
+    # LLM resilience (llama-server may return 500 under load)
+    llm_max_retries: int = 4
+    llm_retry_backoff_sec: float = 0.6
+
+    # Story pacing: N "light" turns, then 1 "mad" turn (cycle length N+1)
+    madness_light_per_mad: int = 50
+
 
 settings = Settings()
