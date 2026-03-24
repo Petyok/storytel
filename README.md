@@ -74,7 +74,7 @@ Environment (optional):
 
 Endpoints:
 
-- `GET /health`
+- `GET /health` — `{"status":"ok","llm_max_retries":4}` (used by the UI for loading copy)
 - `GET /sessions` — list session folder names
 - `POST /sessions` — body `{"session_id":"my_save","overwrite":false}` → create (or reset with `overwrite: true`), returns same shape as `GET /session/{id}`; `409` if exists and not overwriting
 - `GET /session/{id}` — merged state + last scene + pending choices
@@ -103,9 +103,11 @@ If `llama-server` is on your `PATH` and you set a model path, `run.sh` can spawn
 ```bash
 export START_LLAMA=1
 export LLAMA_MODEL=/path/to/model.gguf
-# optional: LLAMA_PORT=8080 LLAMA_SERVER_BIN=llama-server LLAMA_SERVER_EXTRA="--ctx-size 4096"
+# optional: LLAMA_PORT=8080 LLAMA_LOG=./logs/llama-server.log LLAMA_SERVER_EXTRA="--ctx-size 4096"
 ./run.sh
 ```
+
+Logs go to `logs/llama-server.log` by default so **slot\_** / **srv\_** lines do not flood the same terminal as Vite. If you start `llama-server` yourself next to `npm run dev`, redirect stdout: `llama-server ... >> logs/llama-server.log 2>&1`.
 
 ## Frontend
 

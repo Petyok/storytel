@@ -19,5 +19,5 @@ app.include_router(sessions_router)
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, object]:
+    return {"status": "ok", "llm_max_retries": settings.llm_max_retries}

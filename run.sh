@@ -14,7 +14,7 @@ for arg in "$@"; do
       echo "  Starts uvicorn on API_PORT (default 8000) and Vite on FRONTEND_PORT (default 5173)."
       echo "  --system  use python3 instead of .venv/bin/python"
       echo "  Env: API_PORT, FRONTEND_PORT"
-      echo "  Optional llama-server: START_LLAMA=1 LLAMA_MODEL=/path/to/model.gguf [LLAMA_PORT=8080] [LLAMA_SERVER_BIN=llama-server] [LLAMA_SERVER_EXTRA='--ctx-size 4096']"
+      echo "  Optional llama-server: START_LLAMA=1 LLAMA_MODEL=/path/to/model.gguf [LLAMA_PORT=8080] [LLAMA_LOG=path] [LLAMA_SERVER_BIN=llama-server] [LLAMA_SERVER_EXTRA='--ctx-size 4096']"
       exit 0
       ;;
   esac
@@ -60,10 +60,14 @@ if [[ "${START_LLAMA:-0}" == "1" ]]; then
   fi
   LLAMA_SERVER_BIN="${LLAMA_SERVER_BIN:-llama-server}"
   need "$LLAMA_SERVER_BIN"
+  mkdir -p "$ROOT/logs"
+  LLAMA_LOG="${LLAMA_LOG:-$ROOT/logs/llama-server.log}"
   # shellcheck disable=SC2086
   echo "==> LLM  http://127.0.0.1:${LLAMA_PORT}  ($LLAMA_SERVER_BIN, background)"
+  echo "    stdout/stderr → $LLAMA_LOG  (so Vite’s terminal stays readable)"
+  : >"$LLAMA_LOG"
   (
-    exec "$LLAMA_SERVER_BIN" -m "$LLAMA_MODEL" --host 127.0.0.1 --port "$LLAMA_PORT" $LLAMA_SERVER_EXTRA
+    exec "$LLAMA_SERVER_BIN" -m "$LLAMA_MODEL" --host 127.0.0.1 --port "$LLAMA_PORT" $LLAMA_SERVER_EXTRA >>"$LLAMA_LOG" 2>&1
   ) &
   LLAMA_PID=$!
   sleep 0.8

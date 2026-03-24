@@ -57,6 +57,7 @@ export const MESSAGES = {
     loadingTurn: "The world is thinking…",
     loadingShort: "Please wait",
     loadingRetryHint: "Retrying the model if it errors — this can take a moment.",
+    loadingRetryMax: "Up to {n} attempts per turn if the model errors (LLM_MAX_RETRIES).",
 
     backToMenu: "Main menu",
     session: "Session",
@@ -156,6 +157,7 @@ export const MESSAGES = {
     loadingTurn: "Мир обдумывает ход…",
     loadingShort: "Подождите",
     loadingRetryHint: "При ошибке модель запрашивается повторно — подождите немного.",
+    loadingRetryMax: "До {n} попыток за ход при сбое (LLM_MAX_RETRIES).",
 
     backToMenu: "Главное меню",
     session: "Сессия",

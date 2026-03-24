@@ -3,10 +3,17 @@ import { MESSAGES } from "./messages.js";
 
 const STORAGE_KEY = "storyUiLang";
 
+/** @param {string} s @param {Record<string, string | number> | undefined} vars */
+function formatMsg(s, vars) {
+  if (!vars || typeof s !== "string") return s;
+  return s.replace(/\{(\w+)\}/g, (_, k) => (vars[k] != null ? String(vars[k]) : `{${k}}`));
+}
+
 const I18nContext = createContext({
   lang: "en",
   setLang: (_l) => {},
-  t: (_k) => "",
+  /** @type {(k: string, vars?: Record<string, string | number>) => string} */
+  t: (_k, _v) => "",
 });
 
 function readStoredLang() {
@@ -39,9 +46,10 @@ export function I18nProvider({ children }) {
   }, [lang]);
 
   const t = useCallback(
-    (key) => {
+    (key, vars) => {
       const pack = MESSAGES[lang] || MESSAGES.en;
-      return pack[key] ?? MESSAGES.en[key] ?? key;
+      const raw = pack[key] ?? MESSAGES.en[key] ?? key;
+      return formatMsg(raw, vars);
     },
     [lang]
   );

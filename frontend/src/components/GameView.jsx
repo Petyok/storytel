@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { createSession, fetchSession, fetchSessions, postAction } from "../api/client.js";
+import { createSession, fetchHealth, fetchSession, fetchSessions, postAction } from "../api/client.js";
 import ChoiceList from "./ChoiceList.jsx";
 import HUD from "./HUD.jsx";
 import LoadingOverlay from "./LoadingOverlay.jsx";
@@ -45,6 +45,7 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
     effects: [],
     lastCheck: null,
   });
+  const [llmMaxRetries, setLlmMaxRetries] = useState(/** @type {number | null} */ (null));
 
   const load = useCallback(async (id) => {
     setError("");
@@ -78,6 +79,22 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
     }
     load(sessionId);
   }, [sessionId, load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const h = await fetchHealth();
+        const n = h.llm_max_retries;
+        if (!cancelled && typeof n === "number" && n > 0) setLlmMaxRetries(n);
+      } catch {
+        if (!cancelled) setLlmMaxRetries(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function applyActionResponse(data) {
     setState(data.state);
@@ -142,7 +159,7 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
 
   return (
     <div className="app game-view">
-      <LoadingOverlay visible={busy} kind={busyKind} />
+      <LoadingOverlay visible={busy} kind={busyKind} llmMaxRetries={llmMaxRetries} />
 
       <div className="top-row">
         <div className="session-bar">
@@ -200,10 +217,13 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
         </div>
         <div className="meta-bar mono small">
           {lastMeta.llmOk ? <span className="ok">{t("llmOk")}</span> : <span className="warn">{t("llmFallback")}</span>}
-          {lastMeta.attempts > 1 && (
+          {lastMeta.attempts >= 1 && (
             <span className="muted" title={t("llmAttempts")}>
               {" "}
               · {t("llmAttempts")}: {lastMeta.attempts}
+              {llmMaxRetries != null && llmMaxRetries > 0 && (
+                <span className="muted"> / {llmMaxRetries}</span>
+              )}
             </span>
           )}
           {effectLine && (
