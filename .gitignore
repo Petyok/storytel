@@ -8,3 +8,5 @@ frontend/dist/
 *.egg-info/
 .DS_Store
 logs/
+.runrc
+.local/

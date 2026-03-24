@@ -23,14 +23,17 @@ Legacy `world.json` from `storyteller_v2.py` (`{ "Setting": {"value": "..."} }`)
 
 ## Install (one script)
 
-From the repo root:
+From the `storytel/` directory:
 
 ```bash
 chmod +x install.sh
 ./install.sh
 ```
 
-This creates `.venv`, installs `backend/requirements.txt`, and runs `npm install` in `frontend/`. To use system Python instead of a venv: `./install.sh --system`.
+This creates `.venv`, installs `backend/requirements.txt`, and runs `npm install` in `frontend/`.
+
+- System Python (no venv): `./install.sh --system`
+- **Local LLM binary** (recommended): `./install.sh --with-llama` — tries to download a prebuilt `llama-server` for your OS/arch into `.local/bin/`, or builds from [llama.cpp](https://github.com/ggml-org/llama.cpp) with CMake if no zip matches.
 
 ## Run (one script)
 
@@ -41,10 +44,16 @@ chmod +x run.sh
 ./run.sh
 ```
 
-Starts **uvicorn** on port `8000` (background) and **Vite** on `5173` (foreground). Press **Ctrl+C** to stop both.
+Starts **`llama-server`** when a model path is configured (see below), **uvicorn** on `8000` (background), and **Vite** on `5173` (foreground). Press **Ctrl+C** to stop.
 
-- Use system Python: `./run.sh --system` (requires dependencies on `PATH`).
+**First run:** you are asked once for the path to your **`.gguf`** model; it is stored in **`.runrc`** (gitignored). Press Enter to skip local LLM (API/UI still run; set `LLAMA_CPP_URL` if the model runs elsewhere).
+
+Optional `.runrc` variables: `LLAMA_MODEL`, `LLAMA_PORT`, `LLAMA_SERVER_EXTRA` (extra args for `llama-server`), or `STORYTEL_LLAMA_SKIPPED=1` to disable the prompt and local server.
+
+- Use system Python: `./run.sh --system` (requires backend deps on `PATH`).
 - Change ports: `API_PORT=9000 FRONTEND_PORT=5174 ./run.sh` — if you change `API_PORT`, update the `proxy` target in `frontend/vite.config.js` to match.
+
+`llama-server` logs go to `logs/llama-server.log` so they do not mix with the Vite terminal.
 
 ## Backend
 
@@ -96,19 +105,6 @@ export LLAMA_CPP_URL=http://127.0.0.1:YOUR_PORT
 ```
 
 By default the backend uses **OpenAI-compatible** `POST /v1/completions` (see [llama.cpp server docs](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)): body includes `prompt`, `max_tokens`, `temperature`, `top_p`, `repeat_penalty`, and `model`. The completion text is read from `choices[0].text`. For older servers that only expose the non-OAI route, set `LLM_API_STYLE=native` and `LLAMA_COMPLETION_PATH=/completion`.
-
-### Optional: start llama-server with `./run.sh`
-
-If `llama-server` is on your `PATH` and you set a model path, `run.sh` can spawn it before the API:
-
-```bash
-export START_LLAMA=1
-export LLAMA_MODEL=/path/to/model.gguf
-# optional: LLAMA_PORT=8080 LLAMA_LOG=./logs/llama-server.log LLAMA_SERVER_EXTRA="--ctx-size 4096"
-./run.sh
-```
-
-Logs go to `logs/llama-server.log` by default so **slot\_** / **srv\_** lines do not flood the same terminal as Vite. If you start `llama-server` yourself next to `npm run dev`, redirect stdout: `llama-server ... >> logs/llama-server.log 2>&1`.
 
 ## Frontend
 
