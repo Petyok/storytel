@@ -19,9 +19,11 @@ export async function fetchHealth() {
  *   llm_provider: string,
   *   llama_cpp_url: string,
   *   llama_completion_path: string,
-  *   llm_api_style: string,
+ *   llm_api_style: string,
   *   llm_openai_model: string,
  *   llm_api_key: string,
+ *   llm_game_max_tokens: number,
+ *   llm_scene_max_chars: number,
   *   openrouter_base_url: string,
   *   openrouter_model: string,
  *   openrouter_image_model: string,
@@ -32,9 +34,11 @@ export async function fetchHealth() {
  *   openrouter_image_ready: boolean,
  *   openrouter_cache_enabled: boolean,
  *   openrouter_cache_ttl_sec: number,
-  *   has_openrouter_api_key: boolean,
+ *   has_openrouter_api_key: boolean,
   *   has_llm_bearer: boolean,
   *   llm_timeout_sec: number,
+ *   map_image_rounds: number,
+ *   character_image_rounds: number,
  * }>}
  */
 export async function fetchProviderSettings() {
@@ -85,6 +89,18 @@ export async function fetchSessions() {
 
 export async function fetchSession(sessionId) {
   const res = await fetch(`/session/${encodeURIComponent(sessionId)}`);
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}
+
+/**
+ * @param {string} sessionId
+ * @returns {Promise<{ session_id: string, scene_image: string, scene_image_prompt: string, cached: boolean }>}
+ */
+export async function postSceneImage(sessionId) {
+  const res = await fetch(`/session/${encodeURIComponent(sessionId)}/image`, {
+    method: "POST",
+  });
   if (!res.ok) throw new Error(await parseError(res));
   return res.json();
 }
@@ -160,7 +176,7 @@ export async function postActionStream(sessionId, payload = {}, onProgress) {
 /**
  * @param {string} sessionId
  * @param {boolean} [overwrite]
- * @param {{ language?: 'en'|'ru', player?: {name?: string, backstory?: string}, world?: {location?: string, premise?: string} }} [setup]
+ * @param {{ language?: 'en'|'ru', player?: {name?: string, backstory?: string, appearance?: string}, world?: {location?: string, premise?: string} }} [setup]
  */
 export async function createSession(sessionId, overwrite = false, setup = {}) {
   const payload = {

@@ -21,6 +21,8 @@ class PlayerView(BaseModel):
     flags: dict[str, Any] = Field(default_factory=dict)
     name: str = "Wanderer"
     skills: dict[str, int] = Field(default_factory=dict)
+    backstory: str = ""
+    appearance: str = ""
 
 
 class WorldView(BaseModel):
@@ -50,6 +52,10 @@ class SessionGetResponse(BaseModel):
     last_scene: str
     choices: list[str]
     notices: list[str] = Field(default_factory=list)
+    scene_image: str = ""
+    scene_image_prompt: str = ""
+    map_image: str = ""
+    character_image: str = ""
 
 
 class ActionRequest(BaseModel):
@@ -73,12 +79,23 @@ class ActionResponse(BaseModel):
     scene: str
     choices: list[str]
     notices: list[str] = Field(default_factory=list)
+    scene_image: str = ""
+    scene_image_prompt: str = ""
+    map_image: str = ""
+    character_image: str = ""
     state: UnifiedStateView
     llm_ok: bool = True
     effects_applied: list[str] = Field(default_factory=list)
     llm_attempts: int = 0
     llm_fallback: bool = False
     last_skill_check: str | None = None
+
+
+class SceneImageResponse(BaseModel):
+    session_id: str
+    scene_image: str
+    scene_image_prompt: str
+    cached: bool = False
 
 
 class SessionsListResponse(BaseModel):
@@ -88,6 +105,7 @@ class SessionsListResponse(BaseModel):
 class SessionPlayerSetup(BaseModel):
     name: str = Field(default="Wanderer", max_length=80)
     backstory: str = Field(default="", max_length=2000)
+    appearance: str = Field(default="", max_length=1000)
 
 
 class SessionWorldSetup(BaseModel):
@@ -111,6 +129,8 @@ class ProviderSettingsUpdateRequest(BaseModel):
     llm_openai_model: str | None = Field(default=None, max_length=200)
     llm_api_key: str | None = Field(default=None, max_length=2000)
     llm_timeout_sec: float | None = Field(default=None, ge=1, le=600)
+    llm_game_max_tokens: int | None = Field(default=None, ge=128, le=4096)
+    llm_scene_max_chars: int | None = Field(default=None, ge=400, le=12000)
     openrouter_api_key: str | None = Field(default=None, max_length=2000)
     openrouter_base_url: str | None = Field(default=None, max_length=500)
     openrouter_model: str | None = Field(default=None, max_length=200)
@@ -119,6 +139,8 @@ class ProviderSettingsUpdateRequest(BaseModel):
     openrouter_app_title: str | None = Field(default=None, max_length=120)
     openrouter_cache_enabled: bool | None = None
     openrouter_cache_ttl_sec: int | None = Field(default=None, ge=0, le=86400)
+    map_image_rounds: int | None = Field(default=None, ge=0, le=999)
+    character_image_rounds: int | None = Field(default=None, ge=0, le=999)
 
 
 class ProviderSettingsResponse(BaseModel):
@@ -128,6 +150,8 @@ class ProviderSettingsResponse(BaseModel):
     llm_api_style: str
     llm_openai_model: str
     llm_api_key: str = ""
+    llm_game_max_tokens: int
+    llm_scene_max_chars: int
     openrouter_base_url: str
     openrouter_model: str
     openrouter_image_model: str = ""
@@ -141,3 +165,5 @@ class ProviderSettingsResponse(BaseModel):
     has_openrouter_api_key: bool = False
     has_llm_bearer: bool = False
     llm_timeout_sec: float
+    map_image_rounds: int = 6
+    character_image_rounds: int = 10

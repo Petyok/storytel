@@ -32,6 +32,8 @@ def _defaults() -> dict[str, Any]:
         "llm_openai_model": str(settings.llm_openai_model).strip(),
         "llm_api_key": str(settings.llm_api_key).strip(),
         "llm_timeout_sec": float(settings.llm_timeout_sec),
+        "llm_game_max_tokens": max(128, int(settings.llm_game_max_tokens)),
+        "llm_scene_max_chars": max(400, int(settings.llm_scene_max_chars)),
         "openrouter_api_key": str(settings.openrouter_api_key).strip(),
         "openrouter_base_url": str(settings.openrouter_base_url).strip() or "https://openrouter.ai/api/v1",
         "openrouter_model": str(settings.openrouter_model).strip(),
@@ -40,6 +42,8 @@ def _defaults() -> dict[str, Any]:
         "openrouter_app_title": str(settings.openrouter_app_title).strip() or "Storytel",
         "openrouter_cache_enabled": bool(settings.openrouter_cache_enabled),
         "openrouter_cache_ttl_sec": max(0, int(settings.openrouter_cache_ttl_sec)),
+        "map_image_rounds": max(0, int(settings.map_image_rounds)),
+        "character_image_rounds": max(0, int(settings.character_image_rounds)),
     }
 
 
@@ -82,6 +86,30 @@ def _normalize(data: dict[str, Any]) -> dict[str, Any]:
     if "openrouter_cache_ttl_sec" in data and data["openrouter_cache_ttl_sec"] is not None:
         try:
             merged["openrouter_cache_ttl_sec"] = max(0, min(86400, int(data["openrouter_cache_ttl_sec"])))
+        except (TypeError, ValueError):
+            pass
+
+    if "llm_game_max_tokens" in data and data["llm_game_max_tokens"] is not None:
+        try:
+            merged["llm_game_max_tokens"] = max(128, min(4096, int(data["llm_game_max_tokens"])))
+        except (TypeError, ValueError):
+            pass
+
+    if "llm_scene_max_chars" in data and data["llm_scene_max_chars"] is not None:
+        try:
+            merged["llm_scene_max_chars"] = max(400, min(12000, int(data["llm_scene_max_chars"])))
+        except (TypeError, ValueError):
+            pass
+
+    if "map_image_rounds" in data and data["map_image_rounds"] is not None:
+        try:
+            merged["map_image_rounds"] = max(0, min(999, int(data["map_image_rounds"])))
+        except (TypeError, ValueError):
+            pass
+
+    if "character_image_rounds" in data and data["character_image_rounds"] is not None:
+        try:
+            merged["character_image_rounds"] = max(0, min(999, int(data["character_image_rounds"])))
         except (TypeError, ValueError):
             pass
 

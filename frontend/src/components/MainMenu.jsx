@@ -20,6 +20,7 @@ export default function MainMenu({ selectedId, onSelectId, onStartSession }) {
   const [error, setError] = useState("");
   const [playerName, setPlayerName] = useState("");
   const [playerBackstory, setPlayerBackstory] = useState("");
+  const [playerAppearance, setPlayerAppearance] = useState("");
   const [worldLocation, setWorldLocation] = useState("");
   const [worldPremise, setWorldPremise] = useState("");
   const [providerSettingsOpen, setProviderSettingsOpen] = useState(false);
@@ -29,6 +30,7 @@ export default function MainMenu({ selectedId, onSelectId, onStartSession }) {
     player: {
       name: playerName.trim() || undefined,
       backstory: playerBackstory.trim() || undefined,
+      appearance: playerAppearance.trim() || undefined,
     },
     world: {
       location: worldLocation.trim() || undefined,
@@ -170,6 +172,14 @@ export default function MainMenu({ selectedId, onSelectId, onStartSession }) {
             value={playerBackstory}
             disabled={busy}
             onChange={(e) => setPlayerBackstory(e.target.value)}
+          />
+          <label className="main-menu-fieldlabel">{t("playerAppearance")}</label>
+          <textarea
+            className="main-menu-input main-menu-textarea"
+            placeholder={t("playerAppearancePlaceholder")}
+            value={playerAppearance}
+            disabled={busy}
+            onChange={(e) => setPlayerAppearance(e.target.value)}
           />
           <label className="main-menu-fieldlabel">{t("worldLocation")}</label>
           <input

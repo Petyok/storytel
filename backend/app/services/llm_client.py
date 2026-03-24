@@ -95,6 +95,32 @@ def _text_from_llm_response(data: dict[str, Any], api_style: str) -> str:
     return ""
 
 
+def _image_data_url_from_openrouter_response(data: dict[str, Any]) -> str:
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return ""
+    c0 = choices[0]
+    if not isinstance(c0, dict):
+        return ""
+    msg = c0.get("message")
+    if not isinstance(msg, dict):
+        return ""
+    images = msg.get("images")
+    if not isinstance(images, list) or not images:
+        return ""
+    first = images[0]
+    if not isinstance(first, dict):
+        return ""
+    image_url = first.get("image_url") or first.get("imageUrl")
+    if isinstance(image_url, dict):
+        url = image_url.get("url")
+        if isinstance(url, str):
+            return url.strip()
+    if isinstance(first.get("url"), str):
+        return str(first.get("url")).strip()
+    return ""
+
+
 def _provider(provider_settings: dict[str, Any] | None = None) -> str:
     cfg = provider_settings or get_provider_settings()
     return str(cfg.get("llm_provider", "local")).strip().lower() or "local"
@@ -164,8 +190,8 @@ class LlamaCppClient:
             return {"Authorization": f"Bearer {key}"}
         return {}
 
-    def _openrouter_cache_dir(self) -> Path:
-        return settings.openrouter_cache_dir
+    def _openrouter_cache_dir(self, kind: str = "chat") -> Path:
+        return settings.openrouter_cache_dir / kind
 
     def _openrouter_cache_key(self, payload: dict[str, Any], base: str) -> str:
         blob = json.dumps(
@@ -179,10 +205,10 @@ class LlamaCppClient:
         )
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
-    def _openrouter_cache_get(self, key: str, ttl_sec: int) -> str | None:
+    def _openrouter_cache_get(self, key: str, ttl_sec: int, *, kind: str = "chat") -> str | None:
         if ttl_sec <= 0:
             return None
-        path = self._openrouter_cache_dir() / f"{key}.json"
+        path = self._openrouter_cache_dir(kind) / f"{key}.json"
         if not path.exists():
             return None
         try:
@@ -198,8 +224,8 @@ class LlamaCppClient:
             return None
         return None
 
-    def _openrouter_cache_put(self, key: str, text: str) -> None:
-        path = self._openrouter_cache_dir() / f"{key}.json"
+    def _openrouter_cache_put(self, key: str, text: str, *, kind: str = "chat") -> None:
+        path = self._openrouter_cache_dir(kind) / f"{key}.json"
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             with open(path, "w", encoding="utf-8") as f:
@@ -242,7 +268,7 @@ class LlamaCppClient:
         ttl_sec = int(cfg.get("openrouter_cache_ttl_sec", settings.openrouter_cache_ttl_sec))
         cache_key = self._openrouter_cache_key(payload, base)
         if cache_enabled:
-            cached = self._openrouter_cache_get(cache_key, ttl_sec)
+            cached = self._openrouter_cache_get(cache_key, ttl_sec, kind="chat")
             if cached is not None:
                 return cached
 
@@ -265,8 +291,67 @@ class LlamaCppClient:
             return ""
         text = _text_from_llm_response(data, "openai_completions")
         if cache_enabled and text:
-            self._openrouter_cache_put(cache_key, text)
+            self._openrouter_cache_put(cache_key, text, kind="chat")
         return text
+
+    def generate_openrouter_image(
+        self,
+        prompt: str,
+        *,
+        aspect_ratio: str = "16:9",
+        image_size: str = "1K",
+    ) -> tuple[str, bool]:
+        cfg = self._cfg()
+        key = str(cfg.get("openrouter_api_key", settings.openrouter_api_key or "")).strip()
+        if not key:
+            raise ValueError("OPENROUTER_API_KEY is required for image generation")
+        model = str(cfg.get("openrouter_image_model", settings.openrouter_image_model or "")).strip()
+        if not model:
+            raise ValueError("OPENROUTER_IMAGE_MODEL is required for image generation")
+
+        base = str(cfg.get("openrouter_base_url", settings.openrouter_base_url or "https://openrouter.ai/api/v1")).rstrip("/")
+        url = f"{base}/chat/completions"
+        payload: dict[str, Any] = {
+            "model": model,
+            "modalities": ["image", "text"],
+            "messages": [{"role": "user", "content": prompt}],
+            "image_config": {
+                "aspect_ratio": aspect_ratio,
+                "image_size": image_size,
+            },
+        }
+
+        cache_enabled = bool(cfg.get("openrouter_cache_enabled", settings.openrouter_cache_enabled))
+        ttl_sec = int(cfg.get("openrouter_cache_ttl_sec", settings.openrouter_cache_ttl_sec))
+        cache_key = self._openrouter_cache_key(payload, base)
+        if cache_enabled:
+            cached = self._openrouter_cache_get(cache_key, ttl_sec, kind="image")
+            if cached is not None:
+                return cached, True
+
+        headers: dict[str, str] = {
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+        }
+        ref = str(cfg.get("openrouter_http_referer", settings.openrouter_http_referer or "")).strip()
+        if ref:
+            headers["HTTP-Referer"] = ref
+        title = str(cfg.get("openrouter_app_title", settings.openrouter_app_title or "")).strip()
+        if title:
+            headers["X-Title"] = title
+
+        with httpx.Client(timeout=self.timeout) as client:
+            r = client.post(url, json=payload, headers=headers)
+            r.raise_for_status()
+            data = r.json()
+        if not isinstance(data, dict):
+            raise ValueError("OpenRouter image response was not a JSON object")
+        image_data_url = _image_data_url_from_openrouter_response(data)
+        if not image_data_url:
+            raise ValueError("OpenRouter image response did not include an image")
+        if cache_enabled:
+            self._openrouter_cache_put(cache_key, image_data_url, kind="image")
+        return image_data_url, False
 
     def complete(
         self,
@@ -357,6 +442,8 @@ def parse_llm_json_object(raw: str) -> tuple[dict[str, Any] | None, str | None]:
 
 def parse_llm_game_response(raw: str) -> tuple[dict[str, Any] | None, str | None]:
     """Returns (parsed_dict, error_reason)."""
+    cfg = get_provider_settings()
+    max_scene_chars = max(400, int(cfg.get("llm_scene_max_chars", settings.llm_scene_max_chars)))
     obj, err = parse_llm_json_object(raw)
     if not obj:
         return None, err
@@ -379,7 +466,7 @@ def parse_llm_game_response(raw: str) -> tuple[dict[str, Any] | None, str | None
     ch = [str(c).strip() for c in choices if str(c).strip()]
     if len(ch) < 2:
         return None, "choices_empty"
-    obj["scene"] = scene.strip()[:2000]
+    obj["scene"] = scene.strip()[:max_scene_chars]
     obj["choices"] = ch[:4]
     if "effects_hint" not in obj:
         obj["effects_hint"] = ""

@@ -10,6 +10,8 @@ const DEFAULT_FORM = {
   llm_openai_model: "",
   llm_api_key: "",
   llm_timeout_sec: "120",
+  llm_game_max_tokens: "896",
+  llm_scene_max_chars: "2000",
   openrouter_api_key: "",
   openrouter_base_url: "https://openrouter.ai/api/v1",
   openrouter_model: "",
@@ -18,6 +20,8 @@ const DEFAULT_FORM = {
   openrouter_app_title: "Storytel",
   openrouter_cache_enabled: true,
   openrouter_cache_ttl_sec: "1800",
+  map_image_rounds: "6",
+  character_image_rounds: "10",
 };
 
 function normalizeSettings(data = {}) {
@@ -29,6 +33,8 @@ function normalizeSettings(data = {}) {
     llm_openai_model: data.llm_openai_model || "",
     llm_api_key: data.llm_api_key || "",
     llm_timeout_sec: String(data.llm_timeout_sec ?? DEFAULT_FORM.llm_timeout_sec),
+    llm_game_max_tokens: String(data.llm_game_max_tokens ?? DEFAULT_FORM.llm_game_max_tokens),
+    llm_scene_max_chars: String(data.llm_scene_max_chars ?? DEFAULT_FORM.llm_scene_max_chars),
     openrouter_api_key: data.openrouter_api_key || "",
     openrouter_base_url: data.openrouter_base_url || "https://openrouter.ai/api/v1",
     openrouter_model: data.openrouter_model || "",
@@ -37,6 +43,8 @@ function normalizeSettings(data = {}) {
     openrouter_app_title: data.openrouter_app_title || "Storytel",
     openrouter_cache_enabled: data.openrouter_cache_enabled !== false,
     openrouter_cache_ttl_sec: String(data.openrouter_cache_ttl_sec ?? DEFAULT_FORM.openrouter_cache_ttl_sec),
+    map_image_rounds: String(data.map_image_rounds ?? DEFAULT_FORM.map_image_rounds),
+    character_image_rounds: String(data.character_image_rounds ?? DEFAULT_FORM.character_image_rounds),
   };
 }
 
@@ -49,6 +57,8 @@ function toPayload(form) {
     llm_openai_model: form.llm_openai_model.trim(),
     llm_api_key: form.llm_api_key.trim(),
     llm_timeout_sec: Math.max(1, Number(form.llm_timeout_sec || 120) || 120),
+    llm_game_max_tokens: Math.max(128, Number(form.llm_game_max_tokens || 896) || 896),
+    llm_scene_max_chars: Math.max(400, Number(form.llm_scene_max_chars || 2000) || 2000),
     openrouter_api_key: form.openrouter_api_key.trim(),
     openrouter_base_url: form.openrouter_base_url.trim(),
     openrouter_model: form.openrouter_model.trim(),
@@ -57,6 +67,8 @@ function toPayload(form) {
     openrouter_app_title: form.openrouter_app_title.trim(),
     openrouter_cache_enabled: form.openrouter_cache_enabled === true,
     openrouter_cache_ttl_sec: Math.max(0, Number(form.openrouter_cache_ttl_sec || 0) || 0),
+    map_image_rounds: Math.max(0, Number(form.map_image_rounds || 0) || 0),
+    character_image_rounds: Math.max(0, Number(form.character_image_rounds || 0) || 0),
   };
 }
 
@@ -262,6 +274,32 @@ export default function ProviderSettingsModal({ open, onClose }) {
                       disabled={saving || testing}
                     />
                   </label>
+
+                  <label className="settings-field">
+                    <span className="settings-label">{t("providerSettingsStoryTokens")}</span>
+                    <input
+                      className="settings-input"
+                      type="number"
+                      min="128"
+                      max="4096"
+                      value={form.llm_game_max_tokens}
+                      onChange={(e) => updateField("llm_game_max_tokens", e.target.value)}
+                      disabled={saving || testing}
+                    />
+                  </label>
+
+                  <label className="settings-field">
+                    <span className="settings-label">{t("providerSettingsSceneChars")}</span>
+                    <input
+                      className="settings-input"
+                      type="number"
+                      min="400"
+                      max="12000"
+                      value={form.llm_scene_max_chars}
+                      onChange={(e) => updateField("llm_scene_max_chars", e.target.value)}
+                      disabled={saving || testing}
+                    />
+                  </label>
                 </div>
               </section>
 
@@ -416,6 +454,34 @@ export default function ProviderSettingsModal({ open, onClose }) {
                       onChange={(e) => updateField("openrouter_cache_ttl_sec", e.target.value)}
                       disabled={saving || testing}
                     />
+                  </label>
+
+                  <label className="settings-field">
+                    <span className="settings-label">{t("providerSettingsMapImageRounds")}</span>
+                    <input
+                      className="settings-input"
+                      type="number"
+                      min="0"
+                      max="999"
+                      value={form.map_image_rounds}
+                      onChange={(e) => updateField("map_image_rounds", e.target.value)}
+                      disabled={saving || testing}
+                    />
+                    <span className="settings-help muted small">{t("providerSettingsMapImageRoundsHint")}</span>
+                  </label>
+
+                  <label className="settings-field">
+                    <span className="settings-label">{t("providerSettingsCharacterImageRounds")}</span>
+                    <input
+                      className="settings-input"
+                      type="number"
+                      min="0"
+                      max="999"
+                      value={form.character_image_rounds}
+                      onChange={(e) => updateField("character_image_rounds", e.target.value)}
+                      disabled={saving || testing}
+                    />
+                    <span className="settings-help muted small">{t("providerSettingsCharacterImageRoundsHint")}</span>
                   </label>
                 </div>
               </section>

@@ -73,6 +73,7 @@ Environment (optional):
 | `OPENROUTER_API_KEY` | *(empty)* | Required if `LLM_PROVIDER=openrouter` |
 | `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | API base (usually unchanged) |
 | `OPENROUTER_MODEL` | *(empty)* | Required if OpenRouter — e.g. `qwen/qwen-2.5-7b-instruct`, `openai/gpt-4o-mini` ([models](https://openrouter.ai/models)) |
+| `OPENROUTER_IMAGE_MODEL` | *(empty)* | Optional but required for scene image generation from the UI |
 | `OPENROUTER_HTTP_REFERER` | *(empty)* | Optional `HTTP-Referer` header (OpenRouter docs) |
 | `OPENROUTER_APP_TITLE` | `Storytel` | Optional `X-Title` header |
 | `LLAMA_CPP_URL` | `http://127.0.0.1:8080` | llama.cpp base URL (no trailing slash) |
@@ -81,6 +82,7 @@ Environment (optional):
 | `LLM_OPENAI_MODEL` | `gpt-3.5-turbo-instruct` | `model` field for `/v1/completions` (local server usually ignores the value) |
 | `LLM_API_KEY` | *(empty)* | If set, sends `Authorization: Bearer …` |
 | `LLM_TIMEOUT_SEC` | `120` | HTTP timeout |
+| `LLM_SCENE_MAX_CHARS` | `2000` | Max scene characters kept from the final LLM JSON |
 | `MAX_PROMPT_CHARS` | `12000` | Hard cap on assembled prompt |
 | `CORS_ORIGINS` | `http://127.0.0.1:5173,...` | Browser origins |
 | `LLM_MAX_RETRIES` | `4` | Retries on LLM 5xx / timeout / bad JSON before fallback |
@@ -89,6 +91,8 @@ Environment (optional):
 | `LLM_GAME_TEMPERATURE` | `0.35` | Temperature for story turns (lower helps Qwen/instruct models stick to JSON) |
 | `LLM_STOP_SEQUENCES` | `<|im_end|>` | Comma-separated `stop` strings for `/v1/completions` |
 | `MADNESS_LIGHT_PER_MAD` | `50` | Story cadence: this many “light” turns, then one “mad” turn |
+| `MAP_IMAGE_ROUNDS` | `6` | Auto-refresh the map image only after a location change and at least this many rounds |
+| `CHARACTER_IMAGE_ROUNDS` | `10` | Auto-refresh the character portrait every Y rounds; `0` = only at session start |
 
 Endpoints:
 
@@ -98,6 +102,7 @@ Endpoints:
 - `GET /session/{id}` — merged state + last scene + pending choices
 - `POST /session/{id}/action` — same as above (JSON response).
 - `POST /session/{id}/action/stream` — **NDJSON** stream: lines `{"type":"llm_attempt","current":1,"max":4,"wave":1,"max_waves":3}` during HTTP retries, then `{"type":"result","payload":{...}}` (same shape as the non-stream action response). If the model never returns valid play JSON, the save is **not** advanced and the UI keeps the previous scene/choices (no backup story text).
+- `POST /session/{id}/image` — generate or fetch a cached scene image for the current `pending_scene` using `OPENROUTER_IMAGE_MODEL`
 
 ## llama.cpp (HTTP)
 
@@ -126,6 +131,13 @@ export OPENROUTER_MODEL="qwen/qwen-2.5-7b-instruct"
 ```
 
 The backend calls `POST {OPENROUTER_BASE_URL}/chat/completions` with the full story prompt as one `user` message and reads `choices[0].message.content`. Retry, JSON parsing, and game rules are the same as for local inference. You do not need `llama-server` running when OpenRouter is enabled.
+
+When `OPENROUTER_IMAGE_MODEL` is configured, the UI can also generate a scene illustration on demand from the current saved scene. The image is cached under `.cache/openrouter/image/` and stored in `history.json` until the next turn changes the scene.
+
+The same image model can also auto-generate:
+
+- a location/map illustration when the location changes and the map cadence allows it
+- a character portrait from the saved backstory + appearance text
 
 ## Frontend
 

@@ -15,6 +15,7 @@ from typing import Any
 from app.core.config import settings
 from app.models.schemas import NPCState, UnifiedStateView
 from app.services.llm_client import LlamaCppClient, parse_llm_game_response, parse_llm_json_object
+from app.services.provider_settings import get_provider_settings
 from app.services.state_store import BASE_SKILLS, SessionFiles, apply_unified_to_files, merge_to_unified
 
 TIME_ORDER = ["dawn", "morning", "noon", "dusk", "night", "witching_hour"]
@@ -497,6 +498,30 @@ def _build_turn_context(
         parts.append("Dice / skill result:\n" + check_line)
     parts.append(f"Player action:\n{action_block.strip()[:900]}")
     return "\n\n".join(parts)
+
+
+def build_scene_image_prompt(scene: str, unified: UnifiedStateView, lang: str) -> str:
+    npc_names = ", ".join(n.name for n in unified.world.npcs[:3] if n.name) or ("none" if lang != "ru" else "нет")
+    quest_titles = ", ".join(str(q.get("title", "")).strip() for q in unified.quests.active[:2] if str(q.get("title", "")).strip())
+    inventory = ", ".join(unified.player.inventory[:4]) or ("none" if lang != "ru" else "нет")
+    style_line = (
+        "Create a cinematic dark fantasy illustration with grounded medieval textures, dramatic light, and clear focal subjects."
+        if lang != "ru"
+        else "Создай кинематографичную иллюстрацию тёмного фэнтези с приземлёнными средневековыми фактурами, драматичным светом и ясным фокусом."
+    )
+    prompt = (
+        f"{style_line}\n"
+        f"Scene:\n{scene[:1400]}\n\n"
+        f"Location: {unified.world.location}\n"
+        f"Time of day: {unified.world.time}\n"
+        f"Danger level: {unified.world.danger_level}/10\n"
+        f"Important NPCs: {npc_names}\n"
+        f"Player inventory cues: {inventory}\n"
+        f"Active quest cues: {quest_titles or ('none' if lang != 'ru' else 'нет')}\n"
+        "Avoid text overlays, UI, speech bubbles, watermarks, logos, and split panels.\n"
+        "Prefer one coherent moment from the current scene, suitable for a story splash image."
+    )
+    return prompt[:3000]
 
 
 def build_full_prompt(state_json: str, user_block: str, lang: str, story_mode: str) -> str:
@@ -1099,6 +1124,7 @@ def run_turn(
     On LLM/parse failure: previous scene/choices and disk state are preserved (no backup story).
     """
     llm = llm or LlamaCppClient()
+    runtime_cfg = get_provider_settings()
     unified = merge_to_unified(sf)
     lang = _normalize_lang(unified.player.flags.get("language"))
 
@@ -1188,7 +1214,7 @@ def run_turn(
     parsed, att = _run_json_stage(
         llm,
         final_prompt,
-        max_tokens=settings.llm_game_max_tokens,
+        max_tokens=int(runtime_cfg.get("llm_game_max_tokens", settings.llm_game_max_tokens)),
         temperature=settings.llm_game_temperature,
         parser=parse_llm_game_response,
         on_llm_attempt=on_llm_attempt,
@@ -1250,6 +1276,8 @@ def run_turn(
         "messages": messages[-80:],
         "pending_scene": scene,
         "pending_choices": choices,
+        "pending_scene_image": "",
+        "pending_scene_image_prompt": "",
     }
 
     apply_unified_to_files(sf, unified)
@@ -1263,6 +1291,7 @@ def bootstrap_if_empty(
     language: str | None = None,
     player_name: str | None = None,
     player_backstory: str | None = None,
+    player_appearance: str | None = None,
     world_location: str | None = None,
     world_premise: str | None = None,
 ) -> None:
@@ -1270,6 +1299,7 @@ def bootstrap_if_empty(
     lang = _normalize_lang(language)
     seed_name = (player_name or "").strip() or "Wanderer"
     seed_backstory = (player_backstory or "").strip()
+    seed_appearance = (player_appearance or "").strip()
     seed_location = (world_location or "").strip() or "Ashen Gate"
     seed_premise = (world_premise or "").strip()
     seed_setting = _opening_setting(seed_location, seed_premise)
@@ -1303,7 +1333,8 @@ def bootstrap_if_empty(
     if not sf.main_character:
         sf.main_character = {
             "name": seed_name,
-            "description": "Hollow-eyed and careful" if lang != "ru" else "С внимательным взглядом и осторожными руками",
+            "description": seed_appearance
+            or ("Hollow-eyed and careful" if lang != "ru" else "С внимательным взглядом и осторожными руками"),
             "backstory": seed_backstory,
             "hp": 100,
             "gold": 0,
@@ -1323,6 +1354,9 @@ def bootstrap_if_empty(
             changed = True
         if seed_backstory and not sf.main_character.get("backstory"):
             sf.main_character["backstory"] = seed_backstory
+            changed = True
+        if seed_appearance and not sf.main_character.get("description"):
+            sf.main_character["description"] = seed_appearance
             changed = True
         if seed_name and (not sf.main_character.get("name") or sf.main_character.get("name") == "Wanderer"):
             sf.main_character["name"] = seed_name
@@ -1383,7 +1417,13 @@ def bootstrap_if_empty(
         ]
         changed = True
     if not isinstance(sf.history, dict):
-        sf.history = {"messages": [], "pending_scene": "", "pending_choices": []}
+        sf.history = {
+            "messages": [],
+            "pending_scene": "",
+            "pending_choices": [],
+            "pending_scene_image": "",
+            "pending_scene_image_prompt": "",
+        }
         changed = True
     hist = sf.history
     if not hist.get("messages"):
@@ -1391,6 +1431,8 @@ def bootstrap_if_empty(
             "messages": [],
             "pending_scene": hist.get("pending_scene") or opening_scene,
             "pending_choices": hist.get("pending_choices") or opening_choices,
+            "pending_scene_image": str(hist.get("pending_scene_image", "") or ""),
+            "pending_scene_image_prompt": str(hist.get("pending_scene_image_prompt", "") or ""),
         }
         sf.history = hist
         changed = True
@@ -1400,6 +1442,8 @@ def bootstrap_if_empty(
             "pending_choices",
             opening_choices,
         )
+        hist.setdefault("pending_scene_image", "")
+        hist.setdefault("pending_scene_image_prompt", "")
         sf.history = hist
         changed = True
     if changed:

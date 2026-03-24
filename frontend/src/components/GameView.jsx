@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { createSession, fetchHealth, fetchSession, fetchSessions, postActionStream } from "../api/client.js";
+import { createSession, fetchHealth, fetchSession, fetchSessions, postActionStream, postSceneImage } from "../api/client.js";
 import { tooltipForEngineEffect } from "../i18n/engineEffects.js";
 import ChoiceList from "./ChoiceList.jsx";
 import HUD from "./HUD.jsx";
@@ -21,6 +21,78 @@ const SKILL_KEYS = [
   "intimidation",
   "investigation",
 ];
+
+const SKILL_CHECK_HINTS = [
+  "climb",
+  "jump",
+  "swim",
+  "run",
+  "lift",
+  "hide",
+  "sneak",
+  "quiet",
+  "listen",
+  "look",
+  "search",
+  "track",
+  "talk",
+  "persuade",
+  "lie",
+  "charm",
+  "wild",
+  "trail",
+  "camp",
+  "forest",
+  "magic",
+  "spell",
+  "arcane",
+  "heal",
+  "treat",
+  "poison",
+  "read",
+  "intent",
+  "motive",
+  "threat",
+  "scare",
+  "intimid",
+  "investigate",
+  "clue",
+  "study",
+  "лез",
+  "прыг",
+  "плы",
+  "бег",
+  "сил",
+  "крад",
+  "тих",
+  "скры",
+  "слуш",
+  "смотр",
+  "ищ",
+  "осмотр",
+  "говор",
+  "убежд",
+  "лже",
+  "лес",
+  "дорог",
+  "след",
+  "маг",
+  "заклин",
+  "лекар",
+  "яд",
+  "ран",
+  "чувств",
+  "намер",
+  "запуг",
+  "улик",
+  "разгад",
+];
+
+function suggestsSkillCheck(text) {
+  const value = String(text || "").trim().toLowerCase();
+  if (!value) return false;
+  return SKILL_CHECK_HINTS.some((hint) => value.includes(hint));
+}
 
 /**
  * @param {{
@@ -53,6 +125,12 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
     /** @type {{ current: number, max: number, wave: number, maxWaves: number } | null} */ (null)
   );
   const [providerSettingsOpen, setProviderSettingsOpen] = useState(false);
+  const [sceneImage, setSceneImage] = useState("");
+  const [sceneImagePrompt, setSceneImagePrompt] = useState("");
+  const [imageBusy, setImageBusy] = useState(false);
+  const [lastImageCached, setLastImageCached] = useState(false);
+  const [mapImage, setMapImage] = useState("");
+  const [characterImage, setCharacterImage] = useState("");
 
   const load = useCallback(async (id) => {
     setError("");
@@ -64,6 +142,11 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
       setScene(data.last_scene || "");
       setChoices(data.choices || []);
       setNotices(data.notices || []);
+      setSceneImage(data.scene_image || "");
+      setSceneImagePrompt(data.scene_image_prompt || "");
+      setMapImage(data.map_image || "");
+      setCharacterImage(data.character_image || "");
+      setLastImageCached(false);
       setLastMeta({ llmOk: true, llmFallback: false, attempts: 0, effects: [], lastCheck: null });
       try {
         const lst = await fetchSessions();
@@ -110,6 +193,11 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
     setScene(data.scene);
     setChoices(data.choices || []);
     setNotices(data.notices || []);
+    setSceneImage(data.scene_image || "");
+    setSceneImagePrompt(data.scene_image_prompt || "");
+    setMapImage(data.map_image || "");
+    setCharacterImage(data.character_image || "");
+    setLastImageCached(false);
     const fb = data.llm_fallback === true;
     const ok = data.llm_ok !== false && !fb;
     setLastMeta({
@@ -171,7 +259,23 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
     await submitAction({ choice: "", free_text: freeDraft.trim(), roll_dice: true });
   }
 
+  async function onGenerateImage() {
+    setImageBusy(true);
+    setError("");
+    try {
+      const data = await postSceneImage(sessionId);
+      setSceneImage(data.scene_image || "");
+      setSceneImagePrompt(data.scene_image_prompt || "");
+      setLastImageCached(data.cached === true);
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setImageBusy(false);
+    }
+  }
+
   const effectTags = (lastMeta.effects || []).filter((x) => !String(x).startsWith("check:"));
+  const showRollDice = suggestsSkillCheck(freeDraft) || choices.some((choice) => suggestsSkillCheck(choice));
 
   return (
     <div className="app game-view">
@@ -278,7 +382,16 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
 
       <div className="layout">
         <main className="main">
-          <ScenePanel scene={scene} notices={notices} state={state} />
+          <ScenePanel
+            scene={scene}
+            notices={notices}
+            state={state}
+            sceneImage={sceneImage}
+            sceneImagePrompt={sceneImagePrompt}
+            imageBusy={imageBusy}
+            imageCached={lastImageCached}
+            onGenerateImage={onGenerateImage}
+          />
           <ChoiceList choices={choices} disabled={busy} onChoose={onChoose} />
           <form className="free-action" onSubmit={onSubmitFree}>
             <label className="free-action-label" htmlFor="free-act" title={t("freeActionTip")}>
@@ -296,13 +409,15 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
               <button type="submit" className="btn" disabled={busy || !freeDraft.trim()}>
                 {t("freeActionSubmit")}
               </button>
-              <button type="button" className="btn ghost" disabled={busy} onClick={onRollDice} title={t("rollDiceTip")}>
-                {t("rollDice")}
-              </button>
+              {showRollDice && (
+                <button type="button" className="btn ghost" disabled={busy} onClick={onRollDice} title={t("rollDiceTip")}>
+                  {t("rollDice")}
+                </button>
+              )}
             </div>
           </form>
         </main>
-        <Sidebar state={state} skillKeys={SKILL_KEYS} />
+        <Sidebar state={state} skillKeys={SKILL_KEYS} mapImage={mapImage} characterImage={characterImage} />
       </div>
 
       <footer className="footer muted small mono">{t("footer")}</footer>

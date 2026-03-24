@@ -32,18 +32,43 @@ function formatMod(n) {
 }
 
 /**
- * @param {{ state: any, skillKeys?: string[] }} props
+ * @param {{ state: any, skillKeys?: string[], mapImage?: string, characterImage?: string }} props
  */
-export default function Sidebar({ state, skillKeys = [] }) {
+export default function Sidebar({ state, skillKeys = [], mapImage = "", characterImage = "" }) {
   const { t } = useI18n();
   const inv = state?.player?.inventory ?? [];
   const active = state?.quests?.active ?? [];
   const done = state?.quests?.completed ?? [];
   const map = state?.world?.ascii_map ?? "";
   const skills = state?.player?.skills ?? {};
+  const player = state?.player ?? null;
 
   return (
     <aside className="sidebar">
+      {player && (
+        <div className="character-card">
+          <h3 className="panel-title" title={t("characterInfoTip")}>
+            {t("characterInfo")}
+          </h3>
+          {characterImage ? (
+            <img className="character-portrait" src={characterImage} alt={t("characterImageAlt")} />
+          ) : null}
+          <div className="character-name">{player.name}</div>
+          {player.appearance ? (
+            <div className="character-copy">
+              <strong>{t("characterLooks")}</strong>
+              <p className="muted small">{player.appearance}</p>
+            </div>
+          ) : null}
+          {player.backstory ? (
+            <div className="character-copy">
+              <strong>{t("characterBackstory")}</strong>
+              <p className="muted small">{player.backstory}</p>
+            </div>
+          ) : null}
+        </div>
+      )}
+
       {skillKeys.length > 0 && (
         <>
           <h3 className="panel-title" title={t("skillsTip")}>
@@ -95,6 +120,7 @@ export default function Sidebar({ state, skillKeys = [] }) {
       <h3 className="panel-title" title={t("mapSectionTip")}>
         {t("map")}
       </h3>
+      {mapImage ? <img className="map-image" src={mapImage} alt={t("mapImageAlt")} /> : null}
       <MiniMap asciiMap={map} />
     </aside>
   );

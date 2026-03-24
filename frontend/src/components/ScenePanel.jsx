@@ -94,7 +94,16 @@ function mergeHighlights(text, layers) {
   return out.length ? out : text;
 }
 
-export default function ScenePanel({ scene, notices, state }) {
+export default function ScenePanel({
+  scene,
+  notices,
+  state,
+  sceneImage,
+  sceneImagePrompt,
+  imageBusy = false,
+  imageCached = false,
+  onGenerateImage,
+}) {
   const { lang, t } = useI18n();
   const layers = useMemo(() => {
     const npcNames = state?.world?.npcs?.map((n) => n.name).filter(Boolean) ?? [];
@@ -121,10 +130,40 @@ export default function ScenePanel({ scene, notices, state }) {
 
   return (
     <section className="scene-panel">
-      <h3 className="panel-title" title={t("scenePanelTip")}>
-        {t("scene")}
-      </h3>
+      <div className="scene-panel-head">
+        <h3 className="panel-title" title={t("scenePanelTip")}>
+          {t("scene")}
+        </h3>
+        <button
+          type="button"
+          className="btn ghost scene-image-btn"
+          disabled={imageBusy || !scene || !onGenerateImage}
+          onClick={onGenerateImage}
+          title={t("sceneImageGenerateTip")}
+        >
+          {imageBusy ? t("sceneImageGenerating") : t("sceneImageGenerate")}
+        </button>
+      </div>
       <div className="scene-body">{body}</div>
+
+      {(sceneImage || sceneImagePrompt) && (
+        <div className="scene-image-block">
+          <div className="scene-image-meta muted small">
+            <span>{imageCached ? t("sceneImageCached") : t("sceneImageFresh")}</span>
+          </div>
+          {sceneImage ? (
+            <img className="scene-image" src={sceneImage} alt={t("sceneImageAlt")} />
+          ) : (
+            <div className="muted small">{t("sceneImageUnavailable")}</div>
+          )}
+          {sceneImagePrompt && (
+            <details className="scene-image-prompt">
+              <summary>{t("sceneImagePrompt")}</summary>
+              <pre>{sceneImagePrompt}</pre>
+            </details>
+          )}
+        </div>
+      )}
 
       {notices?.length > 0 && (
         <div className="notices">

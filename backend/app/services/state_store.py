@@ -181,10 +181,26 @@ def _normalize_history(raw: Any) -> dict[str, Any]:
             "pending_choices": list(raw.get("pending_choices", raw.get("last_choices", [])))
             if isinstance(raw.get("pending_choices", raw.get("last_choices", [])), list)
             else [],
+            "pending_scene_image": str(raw.get("pending_scene_image", raw.get("last_scene_image", ""))),
+            "pending_scene_image_prompt": str(
+                raw.get("pending_scene_image_prompt", raw.get("last_scene_image_prompt", ""))
+            ),
         }
     if isinstance(raw, list):
-        return {"messages": raw, "pending_scene": "", "pending_choices": []}
-    return {"messages": [], "pending_scene": "", "pending_choices": []}
+        return {
+            "messages": raw,
+            "pending_scene": "",
+            "pending_choices": [],
+            "pending_scene_image": "",
+            "pending_scene_image_prompt": "",
+        }
+    return {
+        "messages": [],
+        "pending_scene": "",
+        "pending_choices": [],
+        "pending_scene_image": "",
+        "pending_scene_image_prompt": "",
+    }
 
 
 def _inventory_summaries(inv: list[Any]) -> list[str]:
@@ -283,6 +299,8 @@ def merge_to_unified(sf: SessionFiles) -> UnifiedStateView:
         flags=mc["flags"],
         name=mc["name"],
         skills=skills_out,
+        backstory=str(mc.get("backstory", "")),
+        appearance=str(mc.get("description", "")),
     )
     world = WorldView(
         location=w["location"],
@@ -304,16 +322,20 @@ def apply_unified_to_files(sf: SessionFiles, unified: UnifiedStateView) -> None:
     prev_mc = sf.main_character if isinstance(sf.main_character, dict) else {}
     sf.main_character = {
         "name": p.name,
-        "description": prev_mc.get("description", ""),
-        "backstory": prev_mc.get("backstory", ""),
+        "description": p.appearance,
+        "backstory": p.backstory,
         "hp": p.hp,
         "gold": p.gold,
         "status": p.status,
         "flags": dict(p.flags),
         "skills": {k: int(p.skills.get(k, 0)) for k in BASE_SKILLS},
         "created_at": prev_mc.get("created_at") or _utc_now(),
+        "portrait_image": prev_mc.get("portrait_image", ""),
+        "portrait_prompt": prev_mc.get("portrait_prompt", ""),
+        "portrait_generated_turn": prev_mc.get("portrait_generated_turn", -1),
     }
 
+    prev_world = sf.world if isinstance(sf.world, dict) else {}
     sf.world = {
         "location": w.location,
         "danger_level": w.danger_level,
@@ -322,6 +344,10 @@ def apply_unified_to_files(sf: SessionFiles, unified: UnifiedStateView) -> None:
         "npcs": [{"name": n.name, "trust": n.trust, "hidden_intent": n.hidden_intent} for n in w.npcs],
         "ascii_map": w.ascii_map,
         "turn": w.turn,
+        "map_image": prev_world.get("map_image", ""),
+        "map_image_prompt": prev_world.get("map_image_prompt", ""),
+        "map_generated_turn": prev_world.get("map_generated_turn", -1),
+        "map_generated_location": prev_world.get("map_generated_location", ""),
     }
 
     # Rebuild inventory list from summaries is lossy; keep file inventory in sync by only updating quantities we can parse

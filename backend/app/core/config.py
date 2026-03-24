@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     # Story turns: lower temp + more tokens helps chat-tuned models (Qwen, etc.) emit valid JSON
     llm_game_max_tokens: int = 896
     llm_game_temperature: float = 0.35
+    llm_scene_max_chars: int = 2000
     # Comma-separated stop strings for /v1/completions (e.g. </think> when the model adds it after JSON)
     llm_stop_sequences: str = "<|im_end|>"
     max_prompt_chars: int = 12000  # ~3–4k tokens proxy for CPU models
@@ -48,6 +49,8 @@ class Settings(BaseSettings):
     openrouter_app_title: str = "Storytel"
     openrouter_cache_enabled: bool = True
     openrouter_cache_ttl_sec: int = 1800
+    map_image_rounds: int = 6
+    character_image_rounds: int = 10
 
     # LLM resilience (llama-server may return 500 under load)
     llm_max_retries: int = 4
