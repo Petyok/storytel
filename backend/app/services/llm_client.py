@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -116,10 +117,12 @@ class LlamaCppClient:
         self,
         prompt: str,
         max_tokens: int | None = None,
+        on_attempt: Callable[[int, int], None] | None = None,
     ) -> tuple[str, int, str | None]:
         """
         Returns (raw_text, attempts_used, last_error).
         Retries on 5xx, timeouts, and connection errors until max retries.
+        on_attempt(current_1based, max_tries) is invoked before each HTTP call.
         """
         attempts = 0
         last_err: str | None = None
@@ -128,6 +131,8 @@ class LlamaCppClient:
 
         for attempt in range(max_tries):
             attempts = attempt + 1
+            if on_attempt is not None:
+                on_attempt(attempts, max_tries)
             try:
                 return self.complete(prompt, max_tokens=max_tokens), attempts, None
             except httpx.HTTPStatusError as e:

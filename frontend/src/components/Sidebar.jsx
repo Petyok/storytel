@@ -1,18 +1,18 @@
 import MiniMap from "./MiniMap.jsx";
 import { useI18n } from "../i18n/I18nProvider.jsx";
 
-function QuestBlock({ title, quests, empty }) {
+function QuestBlock({ title, titleTip, quests, empty }) {
   if (!quests?.length) {
     return (
       <div className="quest-block">
-        <h4>{title}</h4>
+        <h4 title={titleTip}>{title}</h4>
         <p className="muted small">{empty}</p>
       </div>
     );
   }
   return (
     <div className="quest-block">
-      <h4>{title}</h4>
+      <h4 title={titleTip}>{title}</h4>
       <ul className="quest-list">
         {quests.map((q) => (
           <li key={q.id ?? q.title}>
@@ -46,7 +46,9 @@ export default function Sidebar({ state, skillKeys = [] }) {
     <aside className="sidebar">
       {skillKeys.length > 0 && (
         <>
-          <h3 className="panel-title">{t("skillsTitle")}</h3>
+          <h3 className="panel-title" title={t("skillsTip")}>
+            {t("skillsTitle")}
+          </h3>
           <ul className="skill-list">
             {skillKeys.map((k) => {
               const labelKey = `skill_${k}`;
@@ -62,7 +64,9 @@ export default function Sidebar({ state, skillKeys = [] }) {
         </>
       )}
 
-      <h3 className="panel-title">{t("inventory")}</h3>
+      <h3 className="panel-title" title={t("inventoryTip")}>
+        {t("inventory")}
+      </h3>
       <ul className="inv-list">
         {inv.length === 0 && <li className="muted small">{t("invEmpty")}</li>}
         {inv.map((line) => (
@@ -75,10 +79,22 @@ export default function Sidebar({ state, skillKeys = [] }) {
         ))}
       </ul>
 
-      <QuestBlock title={t("questsActive")} quests={active} empty={t("questsNone")} />
-      <QuestBlock title={t("questsDone")} quests={done} empty={t("questsNone")} />
+      <QuestBlock
+        title={t("questsActive")}
+        titleTip={t("questsActiveTip")}
+        quests={active}
+        empty={t("questsNone")}
+      />
+      <QuestBlock
+        title={t("questsDone")}
+        titleTip={t("questsDoneTip")}
+        quests={done}
+        empty={t("questsNone")}
+      />
 
-      <h3 className="panel-title">{t("map")}</h3>
+      <h3 className="panel-title" title={t("mapSectionTip")}>
+        {t("map")}
+      </h3>
       <MiniMap asciiMap={map} />
     </aside>
   );

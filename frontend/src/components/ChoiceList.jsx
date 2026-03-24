@@ -7,7 +7,9 @@ export default function ChoiceList({ choices, disabled, onChoose }) {
   }
   return (
     <div className="choices">
-      <h3 className="panel-title">{t("choices")}</h3>
+      <h3 className="panel-title" title={t("choicesTip")}>
+        {t("choices")}
+      </h3>
       <div className="choice-grid">
         {choices.map((c, i) => (
           <button

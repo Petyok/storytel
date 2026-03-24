@@ -121,12 +121,16 @@ export default function ScenePanel({ scene, notices, state }) {
 
   return (
     <section className="scene-panel">
-      <h3 className="panel-title">{t("scene")}</h3>
+      <h3 className="panel-title" title={t("scenePanelTip")}>
+        {t("scene")}
+      </h3>
       <div className="scene-body">{body}</div>
 
       {notices?.length > 0 && (
         <div className="notices">
-          <h3 className="panel-title sub">{t("whatYouNotice")}</h3>
+          <h3 className="panel-title sub" title={t("whatYouNoticeTip")}>
+            {t("whatYouNotice")}
+          </h3>
           <div className="notice-chips">
             {notices.map((n) => (
               <span key={n} className="chip">

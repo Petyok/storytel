@@ -78,7 +78,8 @@ Endpoints:
 - `GET /sessions` — list session folder names
 - `POST /sessions` — body `{"session_id":"my_save","overwrite":false}` → create (or reset with `overwrite: true`), returns same shape as `GET /session/{id}`; `409` if exists and not overwriting
 - `GET /session/{id}` — merged state + last scene + pending choices
-- `POST /session/{id}/action` — body `{"choice":"...","free_text":"..."}` (at least one non-empty) → new scene, choices, updated state (auto-saves JSON). Response includes `llm_attempts`, `llm_fallback`, `last_skill_check`.
+- `POST /session/{id}/action` — same as above (JSON response).
+- `POST /session/{id}/action/stream` — **NDJSON** stream: lines `{"type":"llm_attempt","current":1,"max":4,"wave":1,"max_waves":3}` during HTTP retries, then `{"type":"result","payload":{...}}` (same shape as the non-stream action response). If the model never returns valid play JSON, the save is **not** advanced and the UI keeps the previous scene/choices (no backup story text).
 
 ## llama.cpp (HTTP)
 

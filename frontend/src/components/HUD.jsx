@@ -11,7 +11,7 @@ export default function HUD({ player, world }) {
   const localizedLocation = t(locationKey) === locationKey ? world.location : t(locationKey);
   return (
     <header className="hud">
-      <div className="hud-item hud-hp" title={t("hudHp")}>
+      <div className="hud-item hud-hp" title={`${t("hudHp")} — ${t("hudHpTip")}`}>
         <span className="hud-icon" aria-hidden>
           🩸
         </span>
@@ -19,7 +19,7 @@ export default function HUD({ player, world }) {
           {t("hudHp")} {player.hp}
         </span>
       </div>
-      <div className="hud-item hud-gold" title={t("hudGold")}>
+      <div className="hud-item hud-gold" title={`${t("hudGold")} — ${t("hudGoldTip")}`}>
         <span className="hud-icon" aria-hidden>
           ◆
         </span>
@@ -27,19 +27,19 @@ export default function HUD({ player, world }) {
           {t("hudGold")} {player.gold}
         </span>
       </div>
-      <div className="hud-item hud-status" title={t("hudStatus")}>
+      <div className="hud-item hud-status" title={`${t("hudStatus")} — ${t("hudStatusTip")}`}>
         <span className="hud-icon" aria-hidden>
           👤
         </span>
         <span>{localizedStatus}</span>
       </div>
-      <div className="hud-item hud-loc" title={t("hudLocation")}>
+      <div className="hud-item hud-loc" title={`${t("hudLocation")} — ${t("hudLocationTip")}`}>
         <span className="muted">@</span> {localizedLocation}
       </div>
-      <div className="hud-item hud-time" title={t("hudTime")}>
+      <div className="hud-item hud-time" title={`${t("hudTime")} — ${t("hudTimeTip")}`}>
         <span className="muted">⏱</span> {localizedTime}
       </div>
-      <div className="hud-item hud-danger" title={t("hudDanger")}>
+      <div className="hud-item hud-danger" title={`${t("hudDanger")} — ${t("hudDangerTip")}`}>
         <span className="hud-icon" aria-hidden>
           ⚠
         </span>

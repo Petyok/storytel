@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { createSession, fetchHealth, fetchSession, fetchSessions, postAction } from "../api/client.js";
+import { createSession, fetchHealth, fetchSession, fetchSessions, postActionStream } from "../api/client.js";
+import { tooltipForEngineEffect } from "../i18n/engineEffects.js";
 import ChoiceList from "./ChoiceList.jsx";
 import HUD from "./HUD.jsx";
 import LoadingOverlay from "./LoadingOverlay.jsx";
@@ -46,6 +47,9 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
     lastCheck: null,
   });
   const [llmMaxRetries, setLlmMaxRetries] = useState(/** @type {number | null} */ (null));
+  const [liveAttempt, setLiveAttempt] = useState(
+    /** @type {{ current: number, max: number, wave: number, maxWaves: number } | null} */ (null)
+  );
 
   const load = useCallback(async (id) => {
     setError("");
@@ -115,9 +119,23 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
   async function onChoose(choice) {
     setError("");
     setBusyKind("action");
+    setLiveAttempt(null);
     setBusy(true);
     try {
-      const data = await postAction(sessionId, { choice, free_text: freeDraft });
+      const data = await postActionStream(
+        sessionId,
+        { choice, free_text: freeDraft },
+        (ev) => {
+          if (ev.type === "llm_attempt") {
+            setLiveAttempt({
+              current: ev.current ?? 0,
+              max: ev.max ?? 0,
+              wave: ev.wave ?? 0,
+              maxWaves: ev.max_waves ?? 0,
+            });
+          }
+        }
+      );
       applyActionResponse(data);
       try {
         const lst = await fetchSessions();
@@ -128,6 +146,7 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
     } catch (e) {
       setError(String(e.message || e));
     } finally {
+      setLiveAttempt(null);
       setBusy(false);
     }
   }
@@ -138,9 +157,23 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
     if (!text) return;
     setError("");
     setBusyKind("action");
+    setLiveAttempt(null);
     setBusy(true);
     try {
-      const data = await postAction(sessionId, { choice: "", free_text: text });
+      const data = await postActionStream(
+        sessionId,
+        { choice: "", free_text: text },
+        (ev) => {
+          if (ev.type === "llm_attempt") {
+            setLiveAttempt({
+              current: ev.current ?? 0,
+              max: ev.max ?? 0,
+              wave: ev.wave ?? 0,
+              maxWaves: ev.max_waves ?? 0,
+            });
+          }
+        }
+      );
       applyActionResponse(data);
       try {
         const lst = await fetchSessions();
@@ -151,15 +184,16 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
     } catch (err) {
       setError(String(err.message || err));
     } finally {
+      setLiveAttempt(null);
       setBusy(false);
     }
   }
 
-  const effectLine = (lastMeta.effects || []).filter((x) => !String(x).startsWith("check:")).join(", ");
+  const effectTags = (lastMeta.effects || []).filter((x) => !String(x).startsWith("check:"));
 
   return (
     <div className="app game-view">
-      <LoadingOverlay visible={busy} kind={busyKind} llmMaxRetries={llmMaxRetries} />
+      <LoadingOverlay visible={busy} kind={busyKind} llmMaxRetries={llmMaxRetries} liveAttempt={liveAttempt} />
 
       <div className="top-row">
         <div className="session-bar">
@@ -215,8 +249,8 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
             {t("reload")}
           </button>
         </div>
-        <div className="meta-bar mono small">
-          {lastMeta.llmOk ? <span className="ok">{t("llmOk")}</span> : <span className="warn">{t("llmFallback")}</span>}
+        <div className="meta-bar mono small" title={t("metaBarTip")}>
+          {lastMeta.llmOk ? <span className="ok">{t("llmOk")}</span> : <span className="warn">{t("llmError")}</span>}
           {lastMeta.attempts >= 1 && (
             <span className="muted" title={t("llmAttempts")}>
               {" "}
@@ -226,17 +260,27 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
               )}
             </span>
           )}
-          {effectLine && (
-            <span className="muted" title={t("engineEffects")}>
+          {effectTags.length > 0 && (
+            <span className="muted effects-inline" title={t("engineEffects")}>
               {" "}
-              · {effectLine}
+              ·{" "}
+              {effectTags.map((tag, i) => (
+                <span key={`${tag}-${i}`}>
+                  {i > 0 ? " · " : null}
+                  <span className="effect-tag mono" title={tooltipForEngineEffect(tag, t)}>
+                    {tag}
+                  </span>
+                </span>
+              ))}
             </span>
           )}
         </div>
       </div>
 
       {lastMeta.lastCheck && (
-        <div className="skill-check-banner muted small mono">{lastMeta.lastCheck}</div>
+        <div className="skill-check-banner muted small mono" title={t("lastCheck")}>
+          {lastMeta.lastCheck}
+        </div>
       )}
 
       <HUD player={state?.player} world={state?.world} />
@@ -248,7 +292,7 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
           <ScenePanel scene={scene} notices={notices} state={state} />
           <ChoiceList choices={choices} disabled={busy} onChoose={onChoose} />
           <form className="free-action" onSubmit={onSubmitFree}>
-            <label className="free-action-label" htmlFor="free-act">
+            <label className="free-action-label" htmlFor="free-act" title={t("freeActionTip")}>
               {t("freeActionLabel")}
             </label>
             <div className="free-action-row">

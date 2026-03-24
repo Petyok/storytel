@@ -9,6 +9,7 @@ import re
 import secrets
 from copy import deepcopy
 from datetime import datetime, timezone
+from collections.abc import Callable
 from typing import Any
 
 from app.core.config import settings
@@ -59,28 +60,13 @@ def _lang_instruction(lang: str) -> str:
     return "Write scene and choices in English."
 
 
-def _fallback_payload(lang: str) -> dict[str, Any]:
+def _model_failed_notice(lang: str) -> str:
     if lang == "ru":
-        return {
-            "scene": "Коридор дрожит, из щелей тянет золой и шепотом. Впереди что-то сдвинулось — слишком осмысленно для ветра. Твой выбор уже отозвался, и тьма отвечает давлением в спину.",
-            "choices": [
-                "Идти вперед, держа оружие наготове",
-                "Замереть и прислушаться к шагам",
-                "Искать обходной путь",
-                "Окликнуть неизвестного и спровоцировать ответ",
-            ],
-            "effects_hint": "danger+1|time+1",
-        }
-    return {
-        "scene": "The corridor shifts; a draft carries ash and whispers. Something has moved ahead—too deliberate to be wind. Your choice still echoes, and the dark answers with pressure at your back.",
-        "choices": [
-            "Press forward, blade ready",
-            "Listen and mark what follows",
-            "Search for another path",
-            "Call out and force a reaction",
-        ],
-        "effects_hint": "danger+1|time+1",
-    }
+        return "Модель не вернула корректный JSON. Ход не применён — попробуйте снова."
+    return "The model did not return valid play JSON. This turn was not applied—try again."
+
+
+LLM_PARSE_WAVES = 3
 
 
 def _opening_seed_payload(lang: str, player_name: str, world_location: str) -> tuple[str, list[str]]:
@@ -469,9 +455,13 @@ def run_turn(
     choice: str,
     free_text: str = "",
     llm: LlamaCppClient | None = None,
-) -> tuple[str, list[str], UnifiedStateView, list[str], bool, int, bool, str | None]:
+    on_llm_attempt: Callable[[int, int, int], None] | None = None,
+) -> tuple[str, list[str], UnifiedStateView, list[str], bool, int, bool, str | None, list[str]]:
     """
-    Returns scene, choices, unified, effects_applied, llm_ok, llm_attempts, llm_fallback, skill_check_line.
+    Returns scene, choices, unified, effects_applied, llm_ok, llm_attempts, llm_fallback,
+    skill_check_line, extra_notices.
+
+    On LLM/parse failure: previous scene/choices and disk state are preserved (no backup story).
     """
     llm = llm or LlamaCppClient()
     unified = merge_to_unified(sf)
@@ -503,8 +493,13 @@ def run_turn(
     parsed: dict[str, Any] | None = None
     raw = ""
 
-    for _wave in range(3):
-        chunk, att, _http_err = llm.complete_with_retries(prompt)
+    for wave in range(1, LLM_PARSE_WAVES + 1):
+
+        def _attempt_cb(cur: int, mx: int, w: int = wave) -> None:
+            if on_llm_attempt is not None:
+                on_llm_attempt(cur, mx, w)
+
+        chunk, att, _http_err = llm.complete_with_retries(prompt, on_attempt=_attempt_cb)
         total_attempts += att
         raw = chunk
         parsed, _perr = parse_llm_game_response(raw)
@@ -513,8 +508,24 @@ def run_turn(
 
     if not parsed:
         llm_ok = False
-        llm_fallback = True
-        parsed = _fallback_payload(lang)
+        llm_fallback = False
+        prev_scene = str(sf.history.get("pending_scene", "") or "")
+        prev_raw = sf.history.get("pending_choices") or []
+        prev_choices = (
+            [str(c) for c in prev_raw if str(c).strip()] if isinstance(prev_raw, list) else []
+        )
+        unified_unchanged = merge_to_unified(sf)
+        return (
+            prev_scene,
+            prev_choices,
+            unified_unchanged,
+            [],
+            llm_ok,
+            total_attempts,
+            llm_fallback,
+            check_line,
+            [_model_failed_notice(lang)],
+        )
 
     scene = str(parsed["scene"])
     choices = list(parsed["choices"])
@@ -552,8 +563,7 @@ def run_turn(
     apply_unified_to_files(sf, unified)
     sf.save()
 
-    notices = extract_notices(scene, unified)
-    return scene, choices, unified, eff, llm_ok, total_attempts, llm_fallback, check_line
+    return scene, choices, unified, eff, llm_ok, total_attempts, llm_fallback, check_line, []
 
 
 def bootstrap_if_empty(
