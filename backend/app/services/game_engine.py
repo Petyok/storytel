@@ -13,8 +13,8 @@ from collections.abc import Callable
 from typing import Any
 
 from app.core.config import settings
-from app.models.schemas import UnifiedStateView
-from app.services.llm_client import LlamaCppClient, parse_llm_game_response
+from app.models.schemas import NPCState, UnifiedStateView
+from app.services.llm_client import LlamaCppClient, parse_llm_game_response, parse_llm_json_object
 from app.services.state_store import BASE_SKILLS, SessionFiles, apply_unified_to_files, merge_to_unified
 
 TIME_ORDER = ["dawn", "morning", "noon", "dusk", "night", "witching_hour"]
@@ -325,7 +325,7 @@ def _is_mad_turn(turn_before_increment: int) -> bool:
     return (turn_before_increment % cycle) == n
 
 
-def _format_player_action(choice: str, free_text: str) -> str:
+def _format_player_action(choice: str, free_text: str, roll_dice: bool = False) -> str:
     c = (choice or "").strip()
     f = (free_text or "").strip()
     parts: list[str] = []
@@ -333,13 +333,24 @@ def _format_player_action(choice: str, free_text: str) -> str:
         parts.append(f"Chosen button: {c}")
     if f:
         parts.append(f"Player says/does: {f}")
+    if roll_dice:
+        parts.append("Player explicitly asks to roll dice for this interaction.")
+    if not parts and roll_dice:
+        parts.append("Player rolls the dice and lets fate decide the moment.")
     return "\n".join(parts)
 
 
-def _mixed_skill_check(action_text: str, lang: str, skills: dict[str, int], danger: int) -> tuple[str | None, str | None]:
+def _mixed_skill_check(
+    action_text: str,
+    lang: str,
+    skills: dict[str, int],
+    danger: int,
+    *,
+    force_roll: bool = False,
+) -> tuple[str | None, str | None]:
     """Returns (prompt_line, short_tag for effects)."""
     t = (action_text or "").lower()
-    if len(t) < 6:
+    if len(t) < 6 and not force_roll:
         return None, None
     # keyword → skill
     rules: list[tuple[tuple[str, ...], str]] = [
@@ -359,9 +370,19 @@ def _mixed_skill_check(action_text: str, lang: str, skills: dict[str, int], dang
         if any(k in t for k in keys):
             picked = sk
             break
+    if not picked and force_roll:
+        ranked = sorted(
+            ((int(skills.get(sk, 0)), sk) for sk in BASE_SKILLS),
+            reverse=True,
+        )
+        best_mod, best_skill = ranked[0] if ranked else (0, "fortune")
+        if best_mod > 0:
+            picked = best_skill
+        else:
+            picked = "fortune"
     if not picked:
         return None, None
-    mod = int(skills.get(picked, 0))
+    mod = int(skills.get(picked, 0)) if picked in skills else 0
     dc = min(20, max(8, 12 + danger // 2))
     d20 = secrets.randbelow(20) + 1
     total = d20 + mod
@@ -419,7 +440,7 @@ Rules:
 
 def compact_state_for_prompt(u: UnifiedStateView) -> dict[str, Any]:
     inv = u.player.inventory[:12]
-    active_q = u.quests.active[:4]
+    active_q = u.quests.active[:6]
     npcs = [{"n": n.name, "t": n.trust, "h": (n.hidden_intent[:40] + "…") if len(n.hidden_intent) > 40 else n.hidden_intent} for n in u.world.npcs[:6]]
     sk = {k: int(u.player.skills.get(k, 0)) for k in BASE_SKILLS}
     return {
@@ -440,20 +461,41 @@ def compact_state_for_prompt(u: UnifiedStateView) -> dict[str, Any]:
             "turn": u.world.turn,
             "npcs": npcs,
         },
-        "quests": [{"id": q.get("id"), "t": q.get("title"), "s": q.get("status")} for q in active_q],
+        "quests": [
+            {
+                "id": q.get("id"),
+                "t": q.get("title"),
+                "d": str(q.get("description", ""))[:220],
+                "s": q.get("status"),
+                "last_note": str((q.get("notes") or [{}])[-1].get("text", ""))[:160]
+                if isinstance(q.get("notes"), list) and q.get("notes")
+                else "",
+            }
+            for q in active_q
+        ],
     }
 
 
 def build_user_prompt(last_scene: str, action_block: str, recent_lines: list[str], check_line: str | None = None) -> str:
+    return _build_turn_context(last_scene, action_block, recent_lines, check_line) + (
+        "\n\nNarrate the next beat. Reply with the JSON object only, starting with {."
+    )
+
+
+def _build_turn_context(
+    last_scene: str,
+    action_block: str,
+    recent_lines: list[str],
+    check_line: str | None = None,
+) -> str:
     parts = []
     if recent_lines:
         parts.append("Recent:\n" + "\n".join(recent_lines[-4:]))
     if last_scene:
         parts.append("Previous scene:\n" + last_scene[:800])
     if check_line:
-        parts.append(check_line)
+        parts.append("Dice / skill result:\n" + check_line)
     parts.append(f"Player action:\n{action_block.strip()[:900]}")
-    parts.append("Narrate the next beat. Reply with the JSON object only, starting with {{.")
     return "\n\n".join(parts)
 
 
@@ -470,6 +512,397 @@ def build_full_prompt(state_json: str, user_block: str, lang: str, story_mode: s
     if len(full) > settings.max_prompt_chars:
         full = full[: settings.max_prompt_chars] + "\n\n[truncated]"
     return full
+
+
+def _trimmed_list(value: Any, *, limit: int = 4, item_limit: int = 160) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    out: list[str] = []
+    for item in value[:limit]:
+        text = str(item).strip()
+        if text:
+            out.append(text[:item_limit])
+    return out
+
+
+def _coerce_int(value: Any, default: int = 0, minimum: int = -999, maximum: int = 999) -> int:
+    try:
+        return max(minimum, min(maximum, int(value)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _sanitize_world_stage(obj: dict[str, Any]) -> dict[str, Any]:
+    npcs_raw = obj.get("npcs")
+    npcs: list[dict[str, Any]] = []
+    if isinstance(npcs_raw, list):
+        for row in npcs_raw[:4]:
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("name", "")).strip()[:80]
+            if not name:
+                continue
+            npcs.append(
+                {
+                    "name": name,
+                    "trust_delta": _coerce_int(row.get("trust_delta", 0), minimum=-3, maximum=3),
+                    "hidden_intent": str(row.get("hidden_intent", "")).strip()[:160],
+                }
+            )
+    return {
+        "summary": str(obj.get("summary", "")).strip()[:300],
+        "location": str(obj.get("location", "")).strip()[:120],
+        "danger_delta": _coerce_int(obj.get("danger_delta", 0), minimum=-3, maximum=3),
+        "advance_time": bool(obj.get("advance_time", False)),
+        "secrets_add": _trimmed_list(obj.get("secrets_add"), limit=3),
+        "npcs": npcs,
+    }
+
+
+def _sanitize_player_stage(obj: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "summary": str(obj.get("summary", "")).strip()[:300],
+        "hp_delta": _coerce_int(obj.get("hp_delta", 0), minimum=-25, maximum=25),
+        "gold_delta": _coerce_int(obj.get("gold_delta", 0), minimum=-50, maximum=50),
+        "status": str(obj.get("status", "")).strip()[:80],
+        "inventory_add": _trimmed_list(obj.get("inventory_add"), limit=4, item_limit=80),
+        "inventory_remove": _trimmed_list(obj.get("inventory_remove"), limit=4, item_limit=80),
+        "flags_add": _trimmed_list(obj.get("flags_add"), limit=6, item_limit=60),
+    }
+
+
+def _sanitize_quest_stage(obj: dict[str, Any]) -> dict[str, Any]:
+    adds: list[dict[str, Any]] = []
+    if isinstance(obj.get("quests_add"), list):
+        for row in obj["quests_add"][:3]:
+            if not isinstance(row, dict):
+                continue
+            title = str(row.get("title", "")).strip()[:120]
+            if not title:
+                continue
+            adds.append(
+                {
+                    "title": title,
+                    "description": str(row.get("description", "")).strip()[:240] or "New objective",
+                }
+            )
+    updates: list[dict[str, Any]] = []
+    if isinstance(obj.get("quests_update"), list):
+        for row in obj["quests_update"][:5]:
+            if not isinstance(row, dict):
+                continue
+            qid = _coerce_int(row.get("id"), default=-1, minimum=-1, maximum=999999)
+            if qid < 0:
+                continue
+            status = str(row.get("status", "active")).strip().lower()
+            if status not in {"active", "completed", "failed"}:
+                status = "active"
+            updates.append(
+                {
+                    "id": qid,
+                    "status": status,
+                    "note": str(row.get("note", "")).strip()[:200],
+                }
+            )
+    return {
+        "summary": str(obj.get("summary", "")).strip()[:300],
+        "quests_add": adds,
+        "quests_update": updates,
+    }
+
+
+def _sanitize_interaction_stage(obj: dict[str, Any]) -> dict[str, Any]:
+    choices = _trimmed_list(obj.get("choices"), limit=4, item_limit=120)
+    return {
+        "summary": str(obj.get("summary", "")).strip()[:300],
+        "choices": choices[:4] if len(choices) >= 2 else [],
+        "effects_hint": str(obj.get("effects_hint", "")).strip()[:400],
+    }
+
+
+def _append_unique(items: list[str], value: str) -> bool:
+    norm = value.strip().lower()
+    if not norm:
+        return False
+    if any(str(item).strip().lower() == norm for item in items):
+        return False
+    items.append(value)
+    return True
+
+
+def _apply_world_stage(stage: dict[str, Any], unified: UnifiedStateView) -> list[str]:
+    applied: list[str] = []
+    location = stage.get("location", "")
+    if location and location != unified.world.location:
+        unified.world.location = location
+        applied.append("world:location")
+    delta = int(stage.get("danger_delta", 0))
+    if delta:
+        unified.world.danger_level = max(0, min(10, unified.world.danger_level + delta))
+        applied.append("world:danger")
+    if stage.get("advance_time"):
+        unified.world.time = _advance_time(unified.world.time)
+        applied.append("world:time")
+    for secret in stage.get("secrets_add", []):
+        if _append_unique(unified.world.secrets, secret):
+            applied.append("world:secret")
+    for row in stage.get("npcs", []):
+        name = str(row.get("name", "")).strip()
+        if not name:
+            continue
+        existing = next((n for n in unified.world.npcs if n.name.lower() == name.lower()), None)
+        if existing is None:
+            unified.world.npcs.append(
+                NPCState(
+                    name=name,
+                    trust=max(-10, min(10, int(row.get("trust_delta", 0)))),
+                    hidden_intent=str(row.get("hidden_intent", "")).strip(),
+                )
+            )
+            applied.append("world:npc+")
+            continue
+        delta = _coerce_int(row.get("trust_delta", 0), minimum=-3, maximum=3)
+        if delta:
+            existing.trust = max(-10, min(10, existing.trust + delta))
+            applied.append("world:npc~")
+        intent = str(row.get("hidden_intent", "")).strip()
+        if intent:
+            existing.hidden_intent = intent
+            applied.append("world:intent")
+    return applied
+
+
+def _apply_player_stage(stage: dict[str, Any], unified: UnifiedStateView) -> list[str]:
+    applied: list[str] = []
+    hp_delta = int(stage.get("hp_delta", 0))
+    if hp_delta:
+        unified.player.hp = max(0, min(999, unified.player.hp + hp_delta))
+        applied.append("player:hp")
+    gold_delta = int(stage.get("gold_delta", 0))
+    if gold_delta:
+        unified.player.gold = max(0, unified.player.gold + gold_delta)
+        applied.append("player:gold")
+    status = str(stage.get("status", "")).strip()
+    if status and status != unified.player.status:
+        unified.player.status = status
+        applied.append("player:status")
+    inv = list(unified.player.inventory)
+    for item in stage.get("inventory_add", []):
+        if _append_unique(inv, item):
+            applied.append("player:item+")
+    remove_norm = {str(item).strip().lower() for item in stage.get("inventory_remove", [])}
+    if remove_norm:
+        new_inv = [item for item in inv if item.split(" x")[0].strip().lower() not in remove_norm]
+        if len(new_inv) != len(inv):
+            applied.append("player:item-")
+        inv = new_inv
+    unified.player.inventory = inv
+    for flag in stage.get("flags_add", []):
+        key = str(flag).strip()
+        if key:
+            unified.player.flags[key] = True
+            applied.append(f"flag:{key}")
+    return applied
+
+
+def _quest_note(text: str) -> dict[str, str]:
+    return {"timestamp": _utc_now(), "text": text[:200]}
+
+
+def _update_quest_status(unified: UnifiedStateView, qid: int, status: str, note: str = "") -> bool:
+    found: dict[str, Any] | None = None
+    source = unified.quests.active
+    for bucket in (unified.quests.active, unified.quests.completed):
+        for idx, quest in enumerate(bucket):
+            if int(quest.get("id", -1)) == qid:
+                found = deepcopy(quest)
+                del bucket[idx]
+                source = bucket
+                break
+        if found is not None:
+            break
+    if found is None:
+        return False
+    found["status"] = status
+    notes = found.get("notes")
+    if not isinstance(notes, list):
+        notes = []
+    if note:
+        notes.append(_quest_note(note))
+    found["notes"] = notes
+    target = unified.quests.completed if status in {"completed", "failed"} else unified.quests.active
+    target.append(found)
+    return True
+
+
+def _apply_quest_stage(stage: dict[str, Any], unified: UnifiedStateView) -> list[str]:
+    applied: list[str] = []
+    next_id = max([int(q.get("id", 0)) for q in unified.quests.active + unified.quests.completed] or [0]) + 1
+    for row in stage.get("quests_add", []):
+        unified.quests.active.append(
+            {
+                "id": next_id,
+                "title": row["title"],
+                "description": row["description"],
+                "status": "active",
+                "created_at": _utc_now(),
+                "notes": [],
+            }
+        )
+        next_id += 1
+        applied.append(f"quest+:{row['title']}")
+    for row in stage.get("quests_update", []):
+        if _update_quest_status(unified, int(row["id"]), str(row["status"]), str(row.get("note", ""))):
+            applied.append(f"quest~:{row['id']}")
+    return applied
+
+
+def _quest_match_score(quest: dict[str, Any], action_text: str, scene: str, unified: UnifiedStateView) -> int:
+    blob = f"{quest.get('title', '')} {quest.get('description', '')}".lower()
+    hay = " ".join(
+        [
+            action_text.lower(),
+            scene.lower(),
+            unified.world.location.lower(),
+            " ".join(item.lower() for item in unified.player.inventory),
+        ]
+    )
+    special_pairs = (
+        ("rest", ("rest", "sleep", "inn", "tavern", "camp", "shelter")),
+        ("отдых", ("отдых", "ночлег", "укры", "лагер", "трактир", "постоял")),
+        ("shelter", ("rest", "sleep", "camp", "shelter", "inn", "tavern")),
+        ("укры", ("отдых", "ночлег", "укры", "лагер", "трактир", "постоял")),
+    )
+    for marker, keys in special_pairs:
+        if marker in blob and any(key in hay for key in keys):
+            return 3
+    words = [w for w in re.findall(r"[a-zA-Zа-яА-ЯёЁ]{4,}", blob) if w not in {"quest", "find", "place", "rest", "goal", "цель", "найти", "место"}]
+    hits = sum(1 for word in set(words) if word in hay)
+    return hits
+
+
+def _auto_complete_quests(
+    unified: UnifiedStateView,
+    action_text: str,
+    scene: str,
+    lang: str,
+) -> list[str]:
+    applied: list[str] = []
+    completion_note = (
+        "Auto-completed from the turn outcome."
+        if lang != "ru"
+        else "Автозавершено по итогу этого хода."
+    )
+    for quest in list(unified.quests.active):
+        score = _quest_match_score(quest, action_text, scene, unified)
+        if score >= 2 and _update_quest_status(unified, int(quest.get("id", -1)), "completed", completion_note):
+            applied.append(f"quest~:{quest.get('id')}")
+    return applied
+
+
+def _json_prompt(prefix: str, state_json: str, context: str, schema: str, lang: str, extras: str = "") -> str:
+    prompt = (
+        f"{prefix}\n\nCurrent state:\n{state_json}\n\nTurn context:\n{context}\n\n"
+        f"Language rule: {_lang_instruction(lang)}\n"
+        "Return one JSON object only. No markdown, no commentary.\n"
+        f"Schema:\n{schema}"
+    )
+    if extras:
+        prompt += "\n" + extras
+    if len(prompt) > settings.max_prompt_chars:
+        prompt = prompt[: settings.max_prompt_chars] + "\n\n[truncated]"
+    return prompt
+
+
+def _build_world_stage_prompt(state_json: str, context: str, lang: str, prior_summaries: list[str]) -> str:
+    extras = (
+        "Focus only on world changes caused by the action: location, danger, time, secrets, and NPC trust/intent. "
+        "Keep changes small and concrete. Use empty strings, zeros, or empty arrays when nothing changes.\n"
+        f"Prior stage notes:\n{chr(10).join(prior_summaries) if prior_summaries else '(none)'}"
+    )
+    schema = '{"summary":"...", "location":"", "danger_delta":0, "advance_time":false, "secrets_add":[""], "npcs":[{"name":"", "trust_delta":0, "hidden_intent":""}]}'
+    return _json_prompt("You update the WORLD layer of a dark fantasy session.", state_json, context, schema, lang, extras)
+
+
+def _build_player_stage_prompt(state_json: str, context: str, lang: str, prior_summaries: list[str]) -> str:
+    extras = (
+        "Focus only on the player state: hp, gold, status, inventory, and flags. "
+        "Do not narrate the whole scene; return deltas only.\n"
+        f"Prior stage notes:\n{chr(10).join(prior_summaries) if prior_summaries else '(none)'}"
+    )
+    schema = '{"summary":"...", "hp_delta":0, "gold_delta":0, "status":"", "inventory_add":[""], "inventory_remove":[""], "flags_add":[""]}'
+    return _json_prompt("You update the PLAYER layer of a dark fantasy session.", state_json, context, schema, lang, extras)
+
+
+def _build_quest_stage_prompt(state_json: str, context: str, lang: str, prior_summaries: list[str]) -> str:
+    extras = (
+        "Focus only on quest progress. Treat the quest description as the source of truth for what counts as success or failure. "
+        "Complete or fail quests when the action, resolved state, or immediate interaction fallout clearly satisfies their goal. "
+        "Add at most one or two new quests when the turn naturally creates them.\n"
+        f"Prior stage notes:\n{chr(10).join(prior_summaries) if prior_summaries else '(none)'}"
+    )
+    schema = '{"summary":"...", "quests_add":[{"title":"", "description":""}], "quests_update":[{"id":1, "status":"completed", "note":""}]}'
+    return _json_prompt("You update the QUESTS layer of a dark fantasy session.", state_json, context, schema, lang, extras)
+
+
+def _build_interaction_stage_prompt(state_json: str, context: str, lang: str, prior_summaries: list[str]) -> str:
+    extras = (
+        "Focus on immediate interaction fallout and the next actionable options. "
+        "Use effects_hint only for simple engine tags like trust, flag, hp, gold, item, or danger changes that came from the interaction layer.\n"
+        f"Prior stage notes:\n{chr(10).join(prior_summaries) if prior_summaries else '(none)'}"
+    )
+    schema = '{"summary":"...", "choices":["...", "..."], "effects_hint":""}'
+    return _json_prompt("You update the INTERACTION layer of a dark fantasy session.", state_json, context, schema, lang, extras)
+
+
+def _build_final_summary_prompt(
+    state_json: str,
+    context: str,
+    lang: str,
+    story_mode: str,
+    stage_summaries: list[str],
+    suggested_choices: list[str],
+) -> str:
+    summary_block = "\n".join(stage_summaries) if stage_summaries else "(none)"
+    choice_block = "\n".join(f"- {c}" for c in suggested_choices) if suggested_choices else "(none)"
+    narrator_context = (
+        f"Resolved stage summaries:\n{summary_block}\n\n"
+        f"Suggested next actions from the interaction layer:\n{choice_block}\n\n"
+        f"{context}"
+    )
+    return build_full_prompt(state_json, narrator_context, lang, story_mode)
+
+
+def _run_json_stage(
+    llm: LlamaCppClient,
+    prompt: str,
+    *,
+    max_tokens: int,
+    temperature: float,
+    parser: Callable[[str], tuple[dict[str, Any] | None, str | None]],
+    on_llm_attempt: Callable[[int, int, int], None] | None = None,
+) -> tuple[dict[str, Any] | None, int]:
+    total_attempts = 0
+    for wave in range(1, LLM_PARSE_WAVES + 1):
+        wave_prompt = prompt
+        if wave > 1:
+            wave_prompt += "\n\nReminder: return one valid JSON object only."
+
+        def _attempt_cb(cur: int, mx: int, w: int = wave) -> None:
+            if on_llm_attempt is not None:
+                on_llm_attempt(cur, mx, w)
+
+        raw, attempts, _err = llm.complete_with_retries(
+            wave_prompt,
+            max_tokens=max_tokens,
+            on_attempt=_attempt_cb,
+            temperature=temperature,
+        )
+        total_attempts += attempts
+        parsed, _parse_err = parser(raw)
+        if parsed is not None:
+            return parsed, total_attempts
+    return None, total_attempts
 
 
 def extract_notices(scene: str, unified: UnifiedStateView) -> list[str]:
@@ -655,6 +1088,7 @@ def run_turn(
     sf: SessionFiles,
     choice: str,
     free_text: str = "",
+    roll_dice: bool = False,
     llm: LlamaCppClient | None = None,
     on_llm_attempt: Callable[[int, int, int], None] | None = None,
 ) -> tuple[str, list[str], UnifiedStateView, list[str], bool, int, bool, str | None, list[str]]:
@@ -679,38 +1113,87 @@ def run_turn(
             recent.append(f"{role}: {content}")
 
     last_scene = str(sf.history.get("pending_scene", "") or "")
-    action_block = _format_player_action(choice, free_text)
+    action_block = _format_player_action(choice, free_text, roll_dice=roll_dice)
     sk_map = {k: int(unified.player.skills.get(k, 0)) for k in BASE_SKILLS}
-    check_line, check_tag = _mixed_skill_check(action_block, lang, sk_map, unified.world.danger_level)
-    user_block = build_user_prompt(last_scene, action_block, recent, check_line=check_line)
-
-    story_mode = "mad" if _is_mad_turn(unified.world.turn) else "light"
-    state_json = json.dumps(compact_state_for_prompt(unified), separators=(",", ":"), ensure_ascii=False)
-    prompt = build_full_prompt(state_json, user_block, lang, story_mode)
+    check_line, check_tag = _mixed_skill_check(
+        action_block,
+        lang,
+        sk_map,
+        unified.world.danger_level,
+        force_roll=roll_dice,
+    )
+    context_block = _build_turn_context(last_scene, action_block, recent, check_line=check_line)
 
     llm_ok = True
     llm_fallback = False
     total_attempts = 0
-    parsed: dict[str, Any] | None = None
-    raw = ""
+    working = deepcopy(unified)
+    stage_summaries: list[str] = []
+    effects_applied: list[str] = []
+    interaction_choices: list[str] = []
 
-    for wave in range(1, LLM_PARSE_WAVES + 1):
+    def _compact_working() -> str:
+        return json.dumps(compact_state_for_prompt(working), separators=(",", ":"), ensure_ascii=False)
 
-        def _attempt_cb(cur: int, mx: int, w: int = wave) -> None:
-            if on_llm_attempt is not None:
-                on_llm_attempt(cur, mx, w)
+    stage_specs: list[tuple[str, Callable[[dict[str, Any]], dict[str, Any]], Callable[[dict[str, Any], UnifiedStateView], list[str]], int]] = [
+        ("world", _sanitize_world_stage, _apply_world_stage, 320),
+        ("player", _sanitize_player_stage, _apply_player_stage, 280),
+        ("interaction", _sanitize_interaction_stage, lambda stage, state: apply_effects_hint(str(stage.get("effects_hint", "")), state), 280),
+        ("quests", _sanitize_quest_stage, _apply_quest_stage, 320),
+    ]
 
-        chunk, att, _http_err = llm.complete_with_retries(
+    for stage_name, sanitize, apply_stage, max_tokens in stage_specs:
+        if stage_name == "world":
+            prompt = _build_world_stage_prompt(_compact_working(), context_block, lang, stage_summaries)
+        elif stage_name == "player":
+            prompt = _build_player_stage_prompt(_compact_working(), context_block, lang, stage_summaries)
+        elif stage_name == "quests":
+            prompt = _build_quest_stage_prompt(_compact_working(), context_block, lang, stage_summaries)
+        else:
+            prompt = _build_interaction_stage_prompt(_compact_working(), context_block, lang, stage_summaries)
+
+        parsed_stage, att = _run_json_stage(
+            llm,
             prompt,
-            max_tokens=settings.llm_game_max_tokens,
-            on_attempt=_attempt_cb,
-            temperature=settings.llm_game_temperature,
+            max_tokens=max_tokens,
+            temperature=max(0.1, settings.llm_game_temperature - 0.05),
+            parser=parse_llm_json_object,
+            on_llm_attempt=on_llm_attempt,
         )
         total_attempts += att
-        raw = chunk
-        parsed, _perr = parse_llm_game_response(raw)
-        if parsed:
-            break
+        if not parsed_stage:
+            continue
+        stage = sanitize(parsed_stage)
+        summary = str(stage.get("summary", "")).strip()
+        if summary:
+            stage_summaries.append(f"{stage_name}: {summary}")
+        if stage_name == "interaction":
+            interaction_choices = [str(c).strip() for c in stage.get("choices", []) if str(c).strip()][:4]
+        effects_applied.extend(apply_stage(stage, working))
+
+    story_mode = "mad" if _is_mad_turn(working.world.turn) else "light"
+
+    auto_quest_effects = _auto_complete_quests(working, action_block, last_scene, lang)
+    if auto_quest_effects:
+        effects_applied.extend(auto_quest_effects)
+
+    final_prompt = _build_final_summary_prompt(
+        _compact_working(),
+        context_block,
+        lang,
+        story_mode,
+        stage_summaries,
+        interaction_choices,
+    )
+    parsed, att = _run_json_stage(
+        llm,
+        final_prompt,
+        max_tokens=settings.llm_game_max_tokens,
+        temperature=settings.llm_game_temperature,
+        parser=parse_llm_game_response,
+        on_llm_attempt=on_llm_attempt,
+    )
+    total_attempts += att
 
     if not parsed:
         llm_ok = False
@@ -735,7 +1218,9 @@ def run_turn(
 
     scene = str(parsed["scene"])
     choices = list(parsed["choices"])
-    hint = str(parsed.get("effects_hint", ""))
+    post_scene_quest_effects = _auto_complete_quests(working, action_block, scene, lang)
+    if post_scene_quest_effects:
+        effects_applied.extend(post_scene_quest_effects)
 
     # Choice index: match pressed button to previous pending choices
     prev_choices = sf.history.get("pending_choices") or []
@@ -751,7 +1236,8 @@ def run_turn(
         except Exception:
             pass
 
-    eff = apply_effects_hint(hint, unified)
+    unified = working
+    eff = list(effects_applied)
     if check_tag:
         eff.append(check_tag)
     eff.extend(deterministic_turn_tick(unified, choice_idx))

@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import httpx
 
 from app.core.config import settings
+from app.services.provider_settings import get_provider_settings
 
 
 def _stop_list_from_settings() -> list[str]:
@@ -92,8 +95,9 @@ def _text_from_llm_response(data: dict[str, Any], api_style: str) -> str:
     return ""
 
 
-def _provider() -> str:
-    return (settings.llm_provider or "local").strip().lower()
+def _provider(provider_settings: dict[str, Any] | None = None) -> str:
+    cfg = provider_settings or get_provider_settings()
+    return str(cfg.get("llm_provider", "local")).strip().lower() or "local"
 
 
 class LlamaCppClient:
@@ -104,11 +108,22 @@ class LlamaCppClient:
         base_url: str | None = None,
         completion_path: str | None = None,
         timeout: float | None = None,
+        provider_settings: dict[str, Any] | None = None,
     ) -> None:
-        self.base_url = (base_url or settings.llama_cpp_url).rstrip("/")
-        self.completion_path = completion_path or settings.llama_completion_path
-        self.timeout = timeout if timeout is not None else settings.llm_timeout_sec
-        self._api_style = (settings.llm_api_style or "openai_completions").strip().lower()
+        self.provider_settings = dict(provider_settings or get_provider_settings())
+        self.base_url = (base_url or str(self.provider_settings.get("llama_cpp_url", settings.llama_cpp_url))).rstrip("/")
+        self.completion_path = completion_path or str(
+            self.provider_settings.get("llama_completion_path", settings.llama_completion_path)
+        )
+        self.timeout = timeout if timeout is not None else float(
+            self.provider_settings.get("llm_timeout_sec", settings.llm_timeout_sec)
+        )
+        self._api_style = str(
+            self.provider_settings.get("llm_api_style", settings.llm_api_style or "openai_completions")
+        ).strip().lower()
+
+    def _cfg(self) -> dict[str, Any]:
+        return self.provider_settings
 
     def _build_payload(
         self,
@@ -132,7 +147,7 @@ class LlamaCppClient:
                 payload["stop"] = stops
             return payload
         payload = {
-            "model": settings.llm_openai_model,
+            "model": str(self._cfg().get("llm_openai_model", settings.llm_openai_model)).strip(),
             "prompt": prompt,
             "max_tokens": max_tokens,
             "temperature": temp,
@@ -144,10 +159,53 @@ class LlamaCppClient:
         return payload
 
     def _request_headers(self) -> dict[str, str]:
-        key = (settings.llm_api_key or "").strip()
+        key = str(self._cfg().get("llm_api_key", settings.llm_api_key or "")).strip()
         if key:
             return {"Authorization": f"Bearer {key}"}
         return {}
+
+    def _openrouter_cache_dir(self) -> Path:
+        return settings.openrouter_cache_dir
+
+    def _openrouter_cache_key(self, payload: dict[str, Any], base: str) -> str:
+        blob = json.dumps(
+            {
+                "base": base,
+                "payload": payload,
+            },
+            sort_keys=True,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+    def _openrouter_cache_get(self, key: str, ttl_sec: int) -> str | None:
+        if ttl_sec <= 0:
+            return None
+        path = self._openrouter_cache_dir() / f"{key}.json"
+        if not path.exists():
+            return None
+        try:
+            if (time.time() - path.stat().st_mtime) > ttl_sec:
+                return None
+            with open(path, encoding="utf-8") as f:
+                raw = json.load(f)
+            if isinstance(raw, dict):
+                text = raw.get("text")
+                if isinstance(text, str):
+                    return text
+        except Exception:
+            return None
+        return None
+
+    def _openrouter_cache_put(self, key: str, text: str) -> None:
+        path = self._openrouter_cache_dir() / f"{key}.json"
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({"text": text, "cached_at": time.time()}, f, ensure_ascii=False)
+        except Exception:
+            pass
 
     def _openrouter_chat_complete(
         self,
@@ -157,14 +215,15 @@ class LlamaCppClient:
         temperature: float | None = None,
         stop: list[str] | None = None,
     ) -> str:
-        key = (settings.openrouter_api_key or "").strip()
+        cfg = self._cfg()
+        key = str(cfg.get("openrouter_api_key", settings.openrouter_api_key or "")).strip()
         if not key:
             raise ValueError("OPENROUTER_API_KEY is required when LLM_PROVIDER=openrouter")
-        model = (settings.openrouter_model or "").strip()
+        model = str(cfg.get("openrouter_model", settings.openrouter_model or "")).strip()
         if not model:
             raise ValueError("OPENROUTER_MODEL is required when LLM_PROVIDER=openrouter (see openrouter.ai/models)")
 
-        base = (settings.openrouter_base_url or "https://openrouter.ai/api/v1").rstrip("/")
+        base = str(cfg.get("openrouter_base_url", settings.openrouter_base_url or "https://openrouter.ai/api/v1")).rstrip("/")
         url = f"{base}/chat/completions"
         temp = float(settings.llm_temperature if temperature is None else temperature)
         stops = stop if stop is not None else _stop_list_from_settings()
@@ -179,14 +238,22 @@ class LlamaCppClient:
         if stops:
             payload["stop"] = stops
 
+        cache_enabled = bool(cfg.get("openrouter_cache_enabled", settings.openrouter_cache_enabled))
+        ttl_sec = int(cfg.get("openrouter_cache_ttl_sec", settings.openrouter_cache_ttl_sec))
+        cache_key = self._openrouter_cache_key(payload, base)
+        if cache_enabled:
+            cached = self._openrouter_cache_get(cache_key, ttl_sec)
+            if cached is not None:
+                return cached
+
         headers: dict[str, str] = {
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
         }
-        ref = (settings.openrouter_http_referer or "").strip()
+        ref = str(cfg.get("openrouter_http_referer", settings.openrouter_http_referer or "")).strip()
         if ref:
             headers["HTTP-Referer"] = ref
-        title = (settings.openrouter_app_title or "").strip()
+        title = str(cfg.get("openrouter_app_title", settings.openrouter_app_title or "")).strip()
         if title:
             headers["X-Title"] = title
 
@@ -196,7 +263,10 @@ class LlamaCppClient:
             data = r.json()
         if not isinstance(data, dict):
             return ""
-        return _text_from_llm_response(data, "openai_completions")
+        text = _text_from_llm_response(data, "openai_completions")
+        if cache_enabled and text:
+            self._openrouter_cache_put(cache_key, text)
+        return text
 
     def complete(
         self,
@@ -207,7 +277,7 @@ class LlamaCppClient:
         stop: list[str] | None = None,
     ) -> str:
         mt = max_tokens or settings.llm_max_tokens
-        if _provider() == "openrouter":
+        if _provider(self._cfg()) == "openrouter":
             return self._openrouter_chat_complete(
                 prompt, mt, temperature=temperature, stop=stop
             )
@@ -278,11 +348,18 @@ class LlamaCppClient:
         return "", attempts, last_err or "unknown"
 
 
-def parse_llm_game_response(raw: str) -> tuple[dict[str, Any] | None, str | None]:
-    """Returns (parsed_dict, error_reason)."""
+def parse_llm_json_object(raw: str) -> tuple[dict[str, Any] | None, str | None]:
     obj = _extract_json_object(raw)
     if not obj:
         return None, "not_json"
+    return obj, None
+
+
+def parse_llm_game_response(raw: str) -> tuple[dict[str, Any] | None, str | None]:
+    """Returns (parsed_dict, error_reason)."""
+    obj, err = parse_llm_json_object(raw)
+    if not obj:
+        return None, err
     if "scene" not in obj or "choices" not in obj:
         return None, "missing_keys"
     scene = obj.get("scene")

@@ -260,7 +260,7 @@ def merge_to_unified(sf: SessionFiles) -> UnifiedStateView:
         if not isinstance(q, dict):
             continue
         st = str(q.get("status", "active")).lower()
-        if st == "completed":
+        if st in {"completed", "failed"}:
             completed.append(q)
         else:
             active.append(q)
@@ -332,7 +332,7 @@ def apply_unified_to_files(sf: SessionFiles, unified: UnifiedStateView) -> None:
         new_quests.append(dict(q))
     for q in unified.quests.completed:
         qc = dict(q)
-        qc["status"] = "completed"
+        qc["status"] = str(qc.get("status", "completed")).lower() or "completed"
         new_quests.append(qc)
     sf.quests = new_quests
 

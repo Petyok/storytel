@@ -4,6 +4,7 @@ import { tooltipForEngineEffect } from "../i18n/engineEffects.js";
 import ChoiceList from "./ChoiceList.jsx";
 import HUD from "./HUD.jsx";
 import LoadingOverlay from "./LoadingOverlay.jsx";
+import ProviderSettingsModal from "./ProviderSettingsModal.jsx";
 import ScenePanel from "./ScenePanel.jsx";
 import Sidebar from "./Sidebar.jsx";
 import { useI18n } from "../i18n/I18nProvider.jsx";
@@ -51,6 +52,7 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
   const [liveAttempt, setLiveAttempt] = useState(
     /** @type {{ current: number, max: number, wave: number, maxWaves: number } | null} */ (null)
   );
+  const [providerSettingsOpen, setProviderSettingsOpen] = useState(false);
 
   const load = useCallback(async (id) => {
     setError("");
@@ -119,7 +121,7 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
     });
   }
 
-  async function onChoose(choice) {
+  async function submitAction(payload) {
     setError("");
     setBusyKind("action");
     setLiveAttempt(null);
@@ -127,7 +129,7 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
     try {
       const data = await postActionStream(
         sessionId,
-        { choice, free_text: freeDraft },
+        payload,
         (ev) => {
           if (ev.type === "llm_attempt") {
             setLiveAttempt({
@@ -154,42 +156,19 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
     }
   }
 
+  async function onChoose(choice) {
+    await submitAction({ choice, free_text: freeDraft });
+  }
+
   async function onSubmitFree(e) {
     e.preventDefault();
     const text = freeDraft.trim();
     if (!text) return;
-    setError("");
-    setBusyKind("action");
-    setLiveAttempt(null);
-    setBusy(true);
-    try {
-      const data = await postActionStream(
-        sessionId,
-        { choice: "", free_text: text },
-        (ev) => {
-          if (ev.type === "llm_attempt") {
-            setLiveAttempt({
-              current: ev.current ?? 0,
-              max: ev.max ?? 0,
-              wave: ev.wave ?? 0,
-              maxWaves: ev.max_waves ?? 0,
-            });
-          }
-        }
-      );
-      applyActionResponse(data);
-      try {
-        const lst = await fetchSessions();
-        setSessions(lst.sessions || []);
-      } catch {
-        /* ignore */
-      }
-    } catch (err) {
-      setError(String(err.message || err));
-    } finally {
-      setLiveAttempt(null);
-      setBusy(false);
-    }
+    await submitAction({ choice: "", free_text: text });
+  }
+
+  async function onRollDice() {
+    await submitAction({ choice: "", free_text: freeDraft.trim(), roll_dice: true });
   }
 
   const effectTags = (lastMeta.effects || []).filter((x) => !String(x).startsWith("check:"));
@@ -250,6 +229,9 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
           />
           <button type="button" className="btn ghost" disabled={busy} onClick={() => load(sessionId)}>
             {t("reload")}
+          </button>
+          <button type="button" className="btn ghost" disabled={busy} onClick={() => setProviderSettingsOpen(true)}>
+            {t("providerSettingsButton")}
           </button>
         </div>
         <div className="meta-bar mono small" title={t("metaBarTip")}>
@@ -314,6 +296,9 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
               <button type="submit" className="btn" disabled={busy || !freeDraft.trim()}>
                 {t("freeActionSubmit")}
               </button>
+              <button type="button" className="btn ghost" disabled={busy} onClick={onRollDice} title={t("rollDiceTip")}>
+                {t("rollDice")}
+              </button>
             </div>
           </form>
         </main>
@@ -321,6 +306,7 @@ export default function GameView({ sessionId, onSessionIdChange, onBackToMenu })
       </div>
 
       <footer className="footer muted small mono">{t("footer")}</footer>
+      <ProviderSettingsModal open={providerSettingsOpen} onClose={() => setProviderSettingsOpen(false)} />
     </div>
   );
 }

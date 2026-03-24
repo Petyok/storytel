@@ -160,6 +160,16 @@ code {
   font-size: 0.85rem;
 }
 
+.banner:not(.error) {
+  background: rgba(45, 90, 61, 0.15);
+  border: 1px solid #2d5a3d;
+  color: #d7f3df;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+}
+
 .layout {
   display: grid;
   grid-template-columns: 1fr minmax(200px, 260px);
@@ -636,7 +646,7 @@ code {
 
 .settings-modal {
   width: 100%;
-  max-width: 28rem;
+  max-width: 42rem;
   margin-top: 2vh;
   background: var(--panel);
   border: 1px solid var(--border);
@@ -709,6 +719,110 @@ code {
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
+}
+
+.settings-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+
+.settings-status-pill {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #0f1117;
+  font-size: 0.78rem;
+}
+
+.settings-status-pill span {
+  color: var(--muted);
+}
+
+.settings-status-pill.ok {
+  border-color: #2d5a3d;
+}
+
+.settings-status-pill.warn {
+  border-color: #5e4620;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.settings-section {
+  border: 1px solid #1d2230;
+  border-radius: 6px;
+  padding: 0.8rem;
+  background: rgba(9, 11, 16, 0.55);
+}
+
+.settings-section-title {
+  margin: 0 0 0.7rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.75rem;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.settings-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.settings-input {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.5rem 0.6rem;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.88rem;
+}
+
+.settings-help {
+  line-height: 1.35;
+}
+
+.settings-checkbox {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  font-size: 0.84rem;
+  color: var(--text);
+}
+
+.settings-checkbox input {
+  margin-top: 0.2rem;
+}
+
+.settings-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
 }
 
 .settings-test-result {

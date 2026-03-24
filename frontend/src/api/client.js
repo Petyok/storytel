@@ -17,36 +17,62 @@ export async function fetchHealth() {
 /**
  * @returns {Promise<{
  *   llm_provider: string,
- *   llama_cpp_url: string,
- *   llama_completion_path: string,
- *   llm_api_style: string,
- *   llm_openai_model: string,
- *   openrouter_base_url: string,
- *   openrouter_model: string,
- *   openrouter_ready: boolean,
- *   has_openrouter_api_key: boolean,
- *   has_llm_bearer: boolean,
- *   llm_timeout_sec: number,
+  *   llama_cpp_url: string,
+  *   llama_completion_path: string,
+  *   llm_api_style: string,
+  *   llm_openai_model: string,
+ *   llm_api_key: string,
+  *   openrouter_base_url: string,
+  *   openrouter_model: string,
+ *   openrouter_image_model: string,
+ *   openrouter_api_key: string,
+ *   openrouter_http_referer: string,
+ *   openrouter_app_title: string,
+  *   openrouter_ready: boolean,
+ *   openrouter_image_ready: boolean,
+ *   openrouter_cache_enabled: boolean,
+ *   openrouter_cache_ttl_sec: number,
+  *   has_openrouter_api_key: boolean,
+  *   has_llm_bearer: boolean,
+  *   llm_timeout_sec: number,
  * }>}
  */
-export async function fetchPublicSettings() {
-  const res = await fetch("/settings/public");
+export async function fetchProviderSettings() {
+  const res = await fetch("/settings/provider");
   if (!res.ok) throw new Error(await parseError(res));
   return res.json();
 }
 
 /**
+ * @param {Record<string, unknown>} payload
+ */
+export async function saveProviderSettings(payload) {
+  const res = await fetch("/settings/provider", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}
+
+/**
+ * @param {Record<string, unknown>} [payload]
  * @returns {Promise<{
  *   ok: boolean,
- *   latency_ms: number,
- *   llm_provider: string,
- *   response_preview?: string,
- *   error?: string,
- *   detail?: string,
+  *   latency_ms: number,
+  *   llm_provider: string,
+  *   response_preview?: string,
+  *   error?: string,
+  *   detail?: string,
  * }>}
  */
-export async function postTestLlm() {
-  const res = await fetch("/settings/test-llm", { method: "POST" });
+export async function postTestLlm(payload = undefined) {
+  const res = await fetch("/settings/test-llm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: payload ? JSON.stringify(payload) : undefined,
+  });
   if (!res.ok) throw new Error(await parseError(res));
   return res.json();
 }
@@ -65,15 +91,16 @@ export async function fetchSession(sessionId) {
 
 /**
  * @param {string} sessionId
- * @param {{ choice?: string, free_text?: string }} [payload]
+ * @param {{ choice?: string, free_text?: string, roll_dice?: boolean }} [payload]
  */
 export async function postAction(sessionId, payload = {}) {
   const choice = payload.choice ?? "";
   const free_text = payload.free_text ?? "";
+  const roll_dice = payload.roll_dice === true;
   const res = await fetch(`/session/${encodeURIComponent(sessionId)}/action`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ choice, free_text }),
+    body: JSON.stringify({ choice, free_text, roll_dice }),
   });
   if (!res.ok) throw new Error(await parseError(res));
   return res.json();
@@ -82,19 +109,20 @@ export async function postAction(sessionId, payload = {}) {
 /**
  * NDJSON stream: progress events then final ActionResponse-shaped JSON.
  * @param {string} sessionId
- * @param {{ choice?: string, free_text?: string }} [payload]
+ * @param {{ choice?: string, free_text?: string, roll_dice?: boolean }} [payload]
  * @param {(ev: { type: string, current?: number, max?: number, wave?: number, max_waves?: number }) => void} [onProgress]
  */
 export async function postActionStream(sessionId, payload = {}, onProgress) {
   const choice = payload.choice ?? "";
   const free_text = payload.free_text ?? "";
+  const roll_dice = payload.roll_dice === true;
   const res = await fetch(`/session/${encodeURIComponent(sessionId)}/action/stream`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/x-ndjson, application/json",
     },
-    body: JSON.stringify({ choice, free_text }),
+    body: JSON.stringify({ choice, free_text, roll_dice }),
   });
   if (!res.ok) throw new Error(await parseError(res));
   const reader = res.body?.getReader();

@@ -45,6 +45,7 @@ def _run_action_core(session_id: str, body: ActionRequest) -> ActionResponse:
         sf,
         (body.choice or "").strip(),
         (body.free_text or "").strip(),
+        roll_dice=bool(body.roll_dice),
     )
     notices = extract_notices(scene, unified) + extra_notices
     return ActionResponse(
@@ -181,6 +182,7 @@ def post_action_stream(session_id: str, body: ActionRequest) -> StreamingRespons
                     sf,
                     (body.choice or "").strip(),
                     (body.free_text or "").strip(),
+                    roll_dice=bool(body.roll_dice),
                     on_llm_attempt=on_try,
                 )
                 notices = extract_notices(scene, unified) + extra_notices

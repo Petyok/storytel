@@ -5,8 +5,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.sessions import router as sessions_router
 from app.core.config import settings
+from app.models.schemas import ProviderSettingsResponse, ProviderSettingsUpdateRequest
 from app.services.game_engine import LLM_PARSE_WAVES
 from app.services.llm_client import LlamaCppClient
+from app.services.provider_settings import (
+    get_provider_settings,
+    provider_settings_response_dict,
+    save_provider_settings,
+)
 
 app = FastAPI(title="Dark Fantasy Story", version="1.0.0")
 
@@ -24,8 +30,12 @@ app.include_router(sessions_router)
 
 @app.get("/health")
 def health() -> dict[str, object]:
-    prov = (settings.llm_provider or "local").strip().lower()
-    or_ok = bool((settings.openrouter_api_key or "").strip() and (settings.openrouter_model or "").strip())
+    current = get_provider_settings()
+    prov = str(current.get("llm_provider", "local")).strip().lower() or "local"
+    or_ok = bool(
+        str(current.get("openrouter_api_key", "")).strip()
+        and str(current.get("openrouter_model", "")).strip()
+    )
     return {
         "status": "ok",
         "llm_max_retries": settings.llm_max_retries,
@@ -35,33 +45,30 @@ def health() -> dict[str, object]:
     }
 
 
-@app.get("/settings/public")
-def settings_public() -> dict[str, object]:
-    """Non-secret LLM / provider configuration for the UI (env-driven)."""
-    prov = (settings.llm_provider or "local").strip().lower()
-    or_key = bool((settings.openrouter_api_key or "").strip())
-    or_model = bool((settings.openrouter_model or "").strip())
-    return {
-        "llm_provider": prov,
-        "llama_cpp_url": settings.llama_cpp_url,
-        "llama_completion_path": settings.llama_completion_path,
-        "llm_api_style": settings.llm_api_style,
-        "llm_openai_model": settings.llm_openai_model,
-        "openrouter_base_url": settings.openrouter_base_url,
-        "openrouter_model": (settings.openrouter_model or "").strip(),
-        "openrouter_ready": or_key and or_model if prov == "openrouter" else False,
-        "has_openrouter_api_key": or_key,
-        "has_llm_bearer": bool((settings.llm_api_key or "").strip()),
-        "llm_timeout_sec": settings.llm_timeout_sec,
-    }
+@app.get("/settings/public", response_model=ProviderSettingsResponse)
+def settings_public() -> ProviderSettingsResponse:
+    return ProviderSettingsResponse(**provider_settings_response_dict())
+
+@app.get("/settings/provider", response_model=ProviderSettingsResponse)
+def settings_provider() -> ProviderSettingsResponse:
+    return ProviderSettingsResponse(**provider_settings_response_dict())
+
+
+@app.put("/settings/provider", response_model=ProviderSettingsResponse)
+def settings_provider_update(body: ProviderSettingsUpdateRequest) -> ProviderSettingsResponse:
+    save_provider_settings(body.model_dump(exclude_none=True))
+    return ProviderSettingsResponse(**provider_settings_response_dict())
 
 
 @app.post("/settings/test-llm")
-def settings_test_llm() -> dict[str, object]:
+def settings_test_llm(body: ProviderSettingsUpdateRequest | None = None) -> dict[str, object]:
     """One minimal completion against the active provider (local llama-server or OpenRouter)."""
-    prov = (settings.llm_provider or "local").strip().lower()
+    effective = get_provider_settings()
+    if body is not None:
+        effective = {**effective, **body.model_dump(exclude_none=True)}
+    prov = str(effective.get("llm_provider", "local")).strip().lower() or "local"
     t0 = time.perf_counter()
-    client = LlamaCppClient()
+    client = LlamaCppClient(provider_settings=effective)
     try:
         text = client.complete(
             "Reply with only the letter A.",

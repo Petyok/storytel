@@ -57,12 +57,13 @@ class ActionRequest(BaseModel):
 
     choice: str = Field(default="", max_length=2000)
     free_text: str = Field(default="", max_length=2000)
+    roll_dice: bool = False
 
     @model_validator(mode="after")
     def require_some_action(self) -> "ActionRequest":
         c = (self.choice or "").strip()
         f = (self.free_text or "").strip()
-        if not c and not f:
+        if not c and not f and not self.roll_dice:
             raise ValueError("choice_or_free_text_required")
         return self
 
@@ -100,3 +101,43 @@ class CreateSessionRequest(BaseModel):
     language: str = Field(default="en", max_length=16)
     player: SessionPlayerSetup | None = None
     world: SessionWorldSetup | None = None
+
+
+class ProviderSettingsUpdateRequest(BaseModel):
+    llm_provider: str | None = Field(default=None, max_length=32)
+    llama_cpp_url: str | None = Field(default=None, max_length=500)
+    llama_completion_path: str | None = Field(default=None, max_length=200)
+    llm_api_style: str | None = Field(default=None, max_length=64)
+    llm_openai_model: str | None = Field(default=None, max_length=200)
+    llm_api_key: str | None = Field(default=None, max_length=2000)
+    llm_timeout_sec: float | None = Field(default=None, ge=1, le=600)
+    openrouter_api_key: str | None = Field(default=None, max_length=2000)
+    openrouter_base_url: str | None = Field(default=None, max_length=500)
+    openrouter_model: str | None = Field(default=None, max_length=200)
+    openrouter_image_model: str | None = Field(default=None, max_length=200)
+    openrouter_http_referer: str | None = Field(default=None, max_length=500)
+    openrouter_app_title: str | None = Field(default=None, max_length=120)
+    openrouter_cache_enabled: bool | None = None
+    openrouter_cache_ttl_sec: int | None = Field(default=None, ge=0, le=86400)
+
+
+class ProviderSettingsResponse(BaseModel):
+    llm_provider: str
+    llama_cpp_url: str
+    llama_completion_path: str
+    llm_api_style: str
+    llm_openai_model: str
+    llm_api_key: str = ""
+    openrouter_base_url: str
+    openrouter_model: str
+    openrouter_image_model: str = ""
+    openrouter_api_key: str = ""
+    openrouter_http_referer: str = ""
+    openrouter_app_title: str = "Storytel"
+    openrouter_ready: bool = False
+    openrouter_image_ready: bool = False
+    openrouter_cache_enabled: bool = True
+    openrouter_cache_ttl_sec: int = 1800
+    has_openrouter_api_key: bool = False
+    has_llm_bearer: bool = False
+    llm_timeout_sec: float
