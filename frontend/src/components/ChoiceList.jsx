@@ -1,10 +1,13 @@
+import { useI18n } from "../i18n/I18nProvider.jsx";
+
 export default function ChoiceList({ choices, disabled, onChoose }) {
+  const { t } = useI18n();
   if (!choices?.length) {
-    return <p className="muted small">No choices yet. Load a session.</p>;
+    return <p className="muted small">{t("noChoices")}</p>;
   }
   return (
     <div className="choices">
-      <h3 className="panel-title">CHOICES</h3>
+      <h3 className="panel-title">{t("choices")}</h3>
       <div className="choice-grid">
         {choices.map((c, i) => (
           <button

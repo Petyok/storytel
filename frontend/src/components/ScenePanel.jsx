@@ -1,6 +1,7 @@
 import { useMemo } from "react";
+import { useI18n } from "../i18n/I18nProvider.jsx";
 
-const DANGER = [
+const DANGER_EN = [
   "blood",
   "bone",
   "shadow",
@@ -14,6 +15,30 @@ const DANGER = [
   "ash",
   "corpse",
   "scream",
+];
+
+const DANGER_RU = [
+  "кровь",
+  "кость",
+  "кости",
+  "тьма",
+  "тень",
+  "тени",
+  "проклятье",
+  "проклятие",
+  "нож",
+  "клинок",
+  "огонь",
+  "пламя",
+  "крик",
+  "вопль",
+  "пепел",
+  "зола",
+  "смерть",
+  "мертв",
+  "труп",
+  "зуб",
+  "зубы",
 ];
 
 function escapeReg(s) {
@@ -70,32 +95,38 @@ function mergeHighlights(text, layers) {
 }
 
 export default function ScenePanel({ scene, notices, state }) {
+  const { lang, t } = useI18n();
   const layers = useMemo(() => {
     const npcNames = state?.world?.npcs?.map((n) => n.name).filter(Boolean) ?? [];
     const invNames =
       state?.player?.inventory?.map((s) => s.split(" x")[0].trim()).filter(Boolean) ?? [];
-    const dangerPat = buildPattern(DANGER);
+    const dangerWords = lang === "ru" ? [...DANGER_EN, ...DANGER_RU] : DANGER_EN;
+    const dangerPat = buildPattern(dangerWords);
     const npcPat = buildPattern(npcNames);
     const invPat = buildPattern(invNames);
-    const riskPat = buildPattern(["risk", "doubt", "trap", "hunt", "stalk"]);
+    const riskWords =
+      lang === "ru"
+        ? ["risk", "doubt", "trap", "hunt", "stalk", "ловушка", "охота", "риск", "сомнен"]
+        : ["risk", "doubt", "trap", "hunt", "stalk"];
+    const riskPat = buildPattern(riskWords);
     return [
       { pattern: dangerPat, className: "hl-danger", priority: 1 },
       { pattern: npcPat, className: "hl-npc", priority: 2 },
       { pattern: invPat, className: "hl-item", priority: 3 },
       { pattern: riskPat, className: "hl-risk", priority: 4 },
     ].filter((x) => x.pattern);
-  }, [state]);
+  }, [state, lang]);
 
   const body = useMemo(() => mergeHighlights(scene || "", layers), [scene, layers]);
 
   return (
     <section className="scene-panel">
-      <h3 className="panel-title">SCENE</h3>
-      <div className="scene-body mono">{body}</div>
+      <h3 className="panel-title">{t("scene")}</h3>
+      <div className="scene-body">{body}</div>
 
       {notices?.length > 0 && (
         <div className="notices">
-          <h3 className="panel-title sub">WHAT YOU NOTICE</h3>
+          <h3 className="panel-title sub">{t("whatYouNotice")}</h3>
           <div className="notice-chips">
             {notices.map((n) => (
               <span key={n} className="chip">

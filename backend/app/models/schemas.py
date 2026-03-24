@@ -67,3 +67,8 @@ class ActionResponse(BaseModel):
 
 class SessionsListResponse(BaseModel):
     sessions: list[str]
+
+
+class CreateSessionRequest(BaseModel):
+    session_id: str = Field(..., min_length=1, max_length=64)
+    overwrite: bool = False

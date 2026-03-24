@@ -70,6 +70,7 @@ Endpoints:
 
 - `GET /health`
 - `GET /sessions` — list session folder names
+- `POST /sessions` — body `{"session_id":"my_save","overwrite":false}` → create (or reset with `overwrite: true`), returns same shape as `GET /session/{id}`; `409` if exists and not overwriting
 - `GET /session/{id}` — merged state + last scene + pending choices
 - `POST /session/{id}/action` — body `{"choice":"..."}` → new scene, choices, updated state (auto-saves JSON)
 

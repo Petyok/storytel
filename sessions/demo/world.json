@@ -18,6 +18,6 @@
       "hidden_intent": "sells dust that remembers footsteps"
     }
   ],
-  "ascii_map": "+---------+\n| # # # # |\n| # . @ . |\n| # > # # |\n+---------+\n  ^ you",
+  "ascii_map": "              [ ASHEN GATE — yard ]\n                    N\n    +-------+-------+-------+-------+-------+-------+-------+\n    |   #   |   #   |   #   |   ~   |   ~   |   #   |   #   |\n    |  wall |  wall |  wall | water | water |  wall |  wall |\n    +-------+-------+-------+-------+-------+-------+-------+\n    |   #   |   .   |   .   |   .   |   T   |   #   |   #   |\n    |  wall | floor | floor | floor | toll  |  wall |  wall |\n    +-------+-------+-------+-------+-------+-------+-------+\n    |   #   |   .   |   @   |   .   |   .   |   #   |   #   |\n    |  wall | floor |  YOU  | floor | floor |  wall |  wall |\n    +-------+-------+-------+-------+-------+-------+-------+\n    |   #   |   >   |   .   |   .   |   P   |   .   |   #   |\n    |  wall | stair | floor | floor |patrol | floor |  wall |\n    +-------+-------+-------+-------+-------+-------+-------+\n    |   #   |   #   |   #   |   #   |   #   |   #   |   #   |\n    +-------+-------+-------+-------+-------+-------+-------+\n\n    # wall   . open   ~ water/canal   T gate toll   > lower level   P patrol route   @ your position",
   "turn": 2
 }

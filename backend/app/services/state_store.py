@@ -350,3 +350,33 @@ def load_session(session_id: str, sessions_dir: Path) -> SessionFiles:
     sf.session_dir.mkdir(parents=True, exist_ok=True)
     sf.load()
     return sf
+
+
+SESSION_JSON_FILES: tuple[str, ...] = (
+    "main_character.json",
+    "world.json",
+    "history.json",
+    "inventory.json",
+    "quests.json",
+)
+
+
+def validate_session_id(session_id: str) -> str:
+    import re
+
+    sid = session_id.strip()
+    if not sid or len(sid) > 64:
+        raise ValueError("invalid session id length or empty")
+    if ".." in sid or "/" in sid or "\\" in sid:
+        raise ValueError("invalid session id characters")
+    if not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$", sid):
+        raise ValueError("invalid session id format")
+    return sid
+
+
+def wipe_session_json_files(session_dir: Path) -> None:
+    """Remove canonical session JSON files (directory may remain)."""
+    for name in SESSION_JSON_FILES:
+        p = session_dir / name
+        if p.exists():
+            p.unlink()

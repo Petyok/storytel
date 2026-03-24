@@ -28,3 +28,22 @@ export async function postAction(sessionId, choice) {
   if (!res.ok) throw new Error(await parseError(res));
   return res.json();
 }
+
+/**
+ * @param {string} sessionId
+ * @param {boolean} [overwrite]
+ */
+export async function createSession(sessionId, overwrite = false) {
+  const res = await fetch("/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, overwrite }),
+  });
+  if (!res.ok) {
+    const detail = await parseError(res);
+    const err = new Error(res.status === 409 ? `409: ${detail}` : detail);
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}

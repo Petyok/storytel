@@ -17,6 +17,21 @@ from app.services.state_store import SessionFiles, apply_unified_to_files, merge
 
 TIME_ORDER = ["dawn", "morning", "noon", "dusk", "night", "witching_hour"]
 
+# Default map for new sessions (compact but readable).
+DEFAULT_BOOTSTRAP_ASCII_MAP = """    N
++---+---+---+---+---+---+
+| # | # | # | ~ | ~ | # |
++---+---+---+---+---+---+
+| # | . | . | . | T | # |   T  toll / threshold
++---+---+---+---+---+---+
+| # | . | @ | . | . | # |   @  you
++---+---+---+---+---+---+
+| # | > | . | . | P | # |   >  descent   P  patrol
++---+---+---+---+---+---+
+| # | # | # | # | # | # |
++---+---+---+---+---+---+
+  # wall   . floor   ~ water"""
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -369,7 +384,7 @@ def bootstrap_if_empty(sf: SessionFiles) -> None:
             "time": "night",
             "secrets": ["a sigil scratched under the lintel"],
             "npcs": [{"name": "Gate Warden", "trust": 0, "hidden_intent": "tests the desperate"}],
-            "ascii_map": "+---+\n| @ |\n+---+",
+            "ascii_map": DEFAULT_BOOTSTRAP_ASCII_MAP,
             "turn": 0,
         }
         changed = True

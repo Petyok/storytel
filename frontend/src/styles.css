@@ -329,3 +329,177 @@ code {
   margin-top: 1.5rem;
   text-align: center;
 }
+
+.game-view {
+  position: relative;
+  min-height: 70vh;
+}
+
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 7, 10, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.loading-card {
+  text-align: center;
+  padding: 1.5rem 2rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  max-width: 22rem;
+}
+
+.loading-spinner {
+  width: 2.5rem;
+  height: 2.5rem;
+  margin: 0 auto 1rem;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-title {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.loading-sub {
+  margin: 0;
+}
+
+.main-menu {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem 1rem;
+}
+
+.main-menu-card {
+  width: 100%;
+  max-width: 28rem;
+  padding: 1.75rem 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: linear-gradient(165deg, #141821 0%, #0f1117 100%);
+}
+
+.main-menu-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.65rem;
+  font-family: var(--font-scene);
+  letter-spacing: 0.02em;
+}
+
+.main-menu-sub {
+  margin: 0 0 1.25rem;
+  font-size: 0.88rem;
+}
+
+.main-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.main-menu-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.main-menu-section {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.main-menu-select {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.5rem 0.6rem;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.main-menu-actions {
+  margin-top: 0.5rem;
+}
+
+.main-menu-hint {
+  margin: 0 0 0.5rem;
+}
+
+.main-menu-create {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.main-menu-input {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.5rem 0.6rem;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.main-menu-check {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.main-menu-check input {
+  cursor: pointer;
+}
+
+.main-menu-error {
+  margin-top: 1rem;
+}
+
+.main-menu-playhint {
+  margin: 1.25rem 0 0.75rem;
+}
+
+.main-menu-play {
+  width: 100%;
+  padding: 0.65rem 1rem;
+  font-size: 0.95rem;
+}
+
+.back-menu-btn {
+  margin-right: 0.35rem;
+}
+
+.map-legend {
+  margin: 0.5rem 0 0;
+  line-height: 1.45;
+}
